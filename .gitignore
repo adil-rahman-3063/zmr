@@ -1,0 +1,99 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+.idea_modules/
+
+# VS Code related
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+/android/local.properties
+/android/key.properties
+/android/app/src/main/res/raw/google_services.json
+/android/app/google-services.json
+
+# iOS/macOS related
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/flutter_export_environment.sh
+/ios/ServiceDefinitions.json
+/ios/Runner/GoogleService-Info.plist
+/macos/Flutter/ephemeral/
+/macos/CMakeCache.txt
+/macos/CMakeFiles/
+/macos/cmake_install.cmake
+**/Pods/
+**/.DS_Store
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# General macOS system files
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows related
+/windows/flutter/ephemeral/
+/windows/CMakeCache.txt
+/windows/CMakeFiles/
+/windows/cmake_install.cmake
+/windows/x64/
+/windows/Runner.vcxproj
+/windows/Runner.sln
+
+# Linux related
+/linux/flutter/ephemeral/
+/linux/CMakeCache.txt
+/linux/CMakeFiles/
+/linux/cmake_install.cmake
+
+# Web related
+/web/index.html_bootstrap.js
+
+# Sensitive credentials (exclude from git)
+client_secret_*.json
+*.keystore
+*.jks

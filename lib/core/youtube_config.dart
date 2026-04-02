@@ -1,4 +1,4 @@
 class YoutubeConfig {
-  static const String renderBaseUrl = 'https://zmr-token-provider.onrender.com';
+  static const String tokenProviderUrl = 'https://zmr-link-provider.zmr-music3063.workers.dev';
   static const String dataEndpoint = '/data';
 }

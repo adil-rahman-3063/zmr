@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,6 +9,8 @@ import 'dart:math';
 import '../models/song_model.dart';
 import '../models/playlist_model.dart';
 import '../providers/music_provider.dart';
+import '../widgets/zmr_snackbar.dart';
+import '../widgets/add_to_playlist_sheet.dart';
 
 class PlaylistPage extends ConsumerWidget {
   final ZmrPlaylist playlist;
@@ -29,6 +32,7 @@ class PlaylistPage extends ConsumerWidget {
             backgroundColor: Theme.of(context).colorScheme.surface,
             color: Theme.of(context).colorScheme.primary,
             child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 _buildCoverImage(context),
                 _buildPlaylistInfo(context),
@@ -109,7 +113,7 @@ class PlaylistPage extends ConsumerWidget {
             ),
           ],
         ),
-      ),
+      ).animate().fade(duration: 800.ms).scale(begin: const Offset(1.1, 1.1), end: const Offset(1, 1), curve: Curves.easeOut),
     );
   }
 
@@ -136,34 +140,44 @@ class PlaylistPage extends ConsumerWidget {
                 ),
                 Consumer(
                   builder: (context, ref, child) {
-                    return IconButton(
-                      onPressed: () async {
-                        final songsAsync = ref.read(playlistSongsProvider(playlist.id));
-                        final songs = songsAsync.asData?.value;
-                        if (songs == null || songs.isEmpty) return;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: () async {
+                            final songsAsync = ref.read(playlistSongsProvider(playlist.id));
+                            final songs = songsAsync.asData?.value;
+                            if (songs == null || songs.isEmpty) return;
 
-                        final downloader = ref.read(downloadServiceProvider);
-                        final downloadLoc = ref.read(downloadLocationProvider);
-                        final folderId = ref.read(driveFolderProvider);
+                            final downloader = ref.read(downloadServiceProvider);
+                            final downloadLoc = ref.read(downloadLocationProvider);
+                            final folderId = ref.read(driveFolderProvider);
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Starting download for ${songs.length} songs...'),
-                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          ),
-                        );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Starting download for ${songs.length} songs...'),
+                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ),
+                            );
 
-                        for (var song in songs) {
-                          if (downloadLoc == 'drive') {
-                            await downloader.downloadSongToDrive(song, folderId: folderId);
-                          } else {
-                            await downloader.downloadSongLocally(song);
-                          }
-                        }
-                        ref.read(offlineRefreshProvider.notifier).refresh();
-                      },
-                      icon: Icon(Iconsax.import_1, color: Theme.of(context).colorScheme.onSurface, size: 28),
-                      tooltip: 'Download All',
+                            for (var song in songs) {
+                              if (downloadLoc == 'drive') {
+                                await downloader.downloadSongToDrive(song, folderId: folderId);
+                              } else {
+                                await downloader.downloadSongLocally(song);
+                              }
+                            }
+                            ref.read(offlineRefreshProvider.notifier).refresh();
+                          },
+                          icon: Icon(Iconsax.import_1, color: Theme.of(context).colorScheme.onSurface, size: 28),
+                          tooltip: 'Download All',
+                        ),
+                        IconButton(
+                          onPressed: () => _showPlaylistMenu(context, ref),
+                          icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface, size: 28),
+                          tooltip: 'More Options',
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -250,6 +264,112 @@ class PlaylistPage extends ConsumerWidget {
       ),
     );
   }
+
+  void _showPlaylistMenu(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      useRootNavigator: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Iconsax.edit),
+              title: Text('Rename Playlist', style: GoogleFonts.outfit()),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameDialog(context, ref);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Iconsax.trash, color: Colors.red),
+              title: Text('Delete Playlist', style: GoogleFonts.outfit(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showDeleteConfirm(context, ref);
+              },
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController(text: playlist.title);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        title: Text('Rename Playlist', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: GoogleFonts.outfit(),
+          decoration: const InputDecoration(hintText: 'New playlist name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface))),
+          ElevatedButton(
+            onPressed: () async {
+              final newTitle = controller.text.trim();
+              if (newTitle.isNotEmpty) {
+                await ref.read(youtubeServiceProvider).renamePlaylist(playlist.id, newTitle);
+                ref.invalidate(userPlaylistsProvider);
+                if (ctx.mounted) Navigator.pop(ctx);
+                ZmrSnackbar.show(context, 'Playlist renamed!');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
+            child: Text('Rename', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        title: Text('Delete Playlist?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: const Text('This will permanently delete the playlist from your YouTube account.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await ref.read(youtubeServiceProvider).deletePlaylist(playlist.id);
+              ref.invalidate(userPlaylistsProvider);
+              if (ctx.mounted) {
+                Navigator.pop(ctx); // Close dialog
+                Navigator.pop(context); // Go back from playlist page
+              }
+              ZmrSnackbar.show(context, 'Playlist deleted.');
+            },
+            child: Text('Delete', style: GoogleFonts.outfit(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SongListItem extends ConsumerWidget {
@@ -326,6 +446,7 @@ class _SongListItem extends ConsumerWidget {
             icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface.withAlpha(128), size: 18),
             onPressed: () {
               showModalBottomSheet(
+                useRootNavigator: true,
                 context: context,
                 backgroundColor: Theme.of(context).colorScheme.surface,
                 shape: const RoundedRectangleBorder(
@@ -345,6 +466,28 @@ class _SongListItem extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      ListTile(
+                        leading: Icon(Iconsax.radar, color: Theme.of(context).colorScheme.onSurface),
+                        title: Text('Start Radio', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          ref.read(playbackProvider.notifier).startRadio(song);
+                        },
+                      ),
+                      ListTile(
+                        leading: Icon(Iconsax.add_square, color: Theme.of(context).colorScheme.onSurface),
+                        title: Text('Add to Playlist', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          showModalBottomSheet(
+                            useRootNavigator: true,
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => AddToPlaylistSheet(song: song),
+                          );
+                        },
+                      ),
                       ListTile(
                         leading: Icon(Iconsax.import, color: Theme.of(context).colorScheme.onSurface),
                         title: Text('Download Offline', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
@@ -389,6 +532,6 @@ class _SongListItem extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ).animate().fade(delay: (index * 50).ms, duration: 300.ms).slideX(begin: 0.1, end: 0);
   }
 }

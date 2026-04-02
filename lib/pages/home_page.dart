@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,6 +13,7 @@ import '../models/artist_model.dart';
 import '../models/home_section.dart';
 import '../providers/music_provider.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/add_to_playlist_sheet.dart';
 import 'playlist_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -121,6 +123,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: Theme.of(context).colorScheme.surface,
       color: Theme.of(context).colorScheme.primary,
       child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverAppBar(
             expandedHeight: 280,
@@ -277,7 +280,6 @@ class _HomePageState extends ConsumerState<HomePage> {
               } else if (isThumbnailGrid) {
                 debugPrint('ZMR [UI]: Rendering "$titleLower" as a Thumbnail grid (Force filtered for songs)');
               }
-              
               return Padding(
                 padding: const EdgeInsets.only(bottom: 32.0),
                 child: Column(
@@ -310,7 +312,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       ),
                   ],
                 ),
-              );
+              ).animate().fade(delay: (index * 100).ms, duration: 400.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart);
             },
             childCount: filteredSections.length,
           ),
@@ -729,6 +731,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 void showCookieInputDialog(BuildContext context, WidgetRef ref) {
   final controller = TextEditingController();
   showModalBottomSheet(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
@@ -885,6 +888,7 @@ class _SongListItem extends ConsumerWidget {
         icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
         onPressed: () {
           showModalBottomSheet(
+            useRootNavigator: true,
             context: context,
             backgroundColor: Theme.of(context).colorScheme.surface,
             shape: const RoundedRectangleBorder(
@@ -905,6 +909,28 @@ class _SongListItem extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  ListTile(
+                    leading: Icon(Iconsax.radar, color: Theme.of(context).colorScheme.onSurface),
+                    title: Text('Start Radio', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      ref.read(playbackProvider.notifier).startRadio(song);
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Iconsax.add_square, color: Theme.of(context).colorScheme.onSurface),
+                    title: Text('Add to Playlist', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      showModalBottomSheet(
+                        useRootNavigator: true,
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => AddToPlaylistSheet(song: song),
+                      );
+                    },
+                  ),
                   ListTile(
                     leading: Icon(Iconsax.import, color: Theme.of(context).colorScheme.onSurface),
                     title: Text('Download Offline', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
@@ -1040,7 +1066,7 @@ class _PlaylistCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ).animate().scale(begin: const Offset(0.95, 0.95), duration: 400.ms, curve: Curves.easeOutBack).fade();
   }
 }
 
@@ -1113,6 +1139,7 @@ class _AddPlaylistTile extends ConsumerWidget {
 void _showAddPlaylistDialog(BuildContext context, WidgetRef ref) {
   final controller = TextEditingController();
   showModalBottomSheet(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1245,7 +1272,7 @@ class _SongCard extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ).animate().scale(begin: const Offset(0.95, 0.95), duration: 400.ms, curve: Curves.easeOutBack).fade();
   }
 }
 
@@ -1435,6 +1462,7 @@ class _DownloadActivityTile extends ConsumerWidget {
         trailing: Icon(Iconsax.arrow_right_3, color: Theme.of(context).colorScheme.onSurface.withAlpha(128)),
         onTap: () {
           showModalBottomSheet(
+            useRootNavigator: true,
             context: context,
             isScrollControlled: true,
             backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1576,7 +1604,7 @@ class _ArtistCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ).animate().scale(begin: const Offset(0.95, 0.95), duration: 400.ms, curve: Curves.easeOutBack).fade();
   }
 }
 
@@ -1735,7 +1763,7 @@ class _ThumbnailGrid extends ConsumerWidget {
                 child: Icon(Iconsax.music, color: Theme.of(context).colorScheme.onSurface.withAlpha(100), size: 20),
               ),
             ),
-          ),
+          ).animate().fade(delay: (index * 40).ms).scale(begin: const Offset(0.8, 0.8), curve: Curves.easeOutBack),
         );
       },
     );

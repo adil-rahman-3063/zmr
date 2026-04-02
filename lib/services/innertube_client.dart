@@ -196,9 +196,14 @@ class InnerTubeClient {
   });
 
   /// Playlist Management
-  Future<Response> createPlaylist(String title) => post('playlist/create', {'title': title});
+  Future<Response> createPlaylist(String title, {List<String>? videoIds}) => post('playlist/create', {
+    'title': title,
+    if (videoIds != null) 'videoIds': videoIds
+  });
   
-  Future<Response> deletePlaylist(String playlistId) => post('playlist/delete', {'playlistId': playlistId});
+  Future<Response> deletePlaylist(String playlistId) => post('playlist/delete', {
+    'playlistId': playlistId.startsWith('VL') ? playlistId.substring(2) : playlistId
+  });
 
   Future<Response> editPlaylist(String playlistId, List<Map<String, dynamic>> actions) {
     return post('browse/edit_playlist', {

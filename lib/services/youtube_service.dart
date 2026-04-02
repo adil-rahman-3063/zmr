@@ -33,7 +33,10 @@ class TokenPair {
 }
 
 class YoutubeService {
-  final _dio = Dio();
+  final _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  ));
   final _extractor = YouTubeExtractorService();
   final _innerTube = InnerTubeClient();
   
@@ -512,8 +515,9 @@ class YoutubeService {
       final responsiveItems = _findAllElements(data, 'musicResponsiveListItemRenderer');
       final listItems = _findAllElements(data, 'musicListItemRenderer');
       final twoRowItems = _findAllElements(data, 'musicTwoRowItemRenderer');
+      final playlistPanelItems = _findAllElements(data, 'playlistPanelVideoRenderer');
       
-      final allItems = [...responsiveItems, ...listItems];
+      final allItems = [...responsiveItems, ...listItems, ...playlistPanelItems];
       
       for (var item in allItems) {
         final allVideoIds = _findAllElements(item, 'videoId');
@@ -534,7 +538,7 @@ class YoutubeService {
           }
         } else {
           title = _getText(item['title']);
-          artist = _getText(item['subtitle'] ?? item['artistName']);
+          artist = _getText(item['subtitle'] ?? item['artistName'] ?? item['longBylineText'] ?? item['shortBylineText']);
         }
         
         final thumbnails = _getThumbnails(item);
@@ -766,16 +770,6 @@ class YoutubeService {
     await _innerTube.unsubscribe(channelId);
   }
 
-  Future<void> addToPlaylist(String playlistId, String videoId) async {
-    await getValidTokens();
-    await _innerTube.editPlaylist(playlistId, [
-      {
-        'action': 'ACTION_ADD_VIDEO',
-        'addedVideoId': videoId,
-      }
-    ]);
-  }
-
   Future<void> removeFromPlaylist(String playlistId, String videoId, String setVideoId) async {
     await getValidTokens();
     await _innerTube.editPlaylist(playlistId, [
@@ -815,14 +809,36 @@ class YoutubeService {
   }
 
   Future<List<Song>> fetchRadioSongs(String videoId) async {
+    debugPrint('ZMR [RADIO]: Starting fetch for $videoId...');
     try {
       await getValidTokens();
-      // YTM 'next' returns the music-related watch next data
-      final response = await _innerTube.next(videoId: videoId);
+      
+      // YouTube Music Radio uses 'RDAMVM' + videoId as a virtual playlist container for recommendations
+      final radioPlaylistId = 'RDAMVM$videoId';
+      debugPrint('ZMR [RADIO]: Requesting RD playlist $radioPlaylistId...');
+      final response = await _innerTube.next(videoId: videoId, playlistId: radioPlaylistId);
+      
       if (response.statusCode == 200) {
-        // Our universal parser should find musicResponsiveListItemRenderer etc.
         final songs = _parseBrowseSongs(response.data);
-        return songs;
+        if (songs.isNotEmpty) {
+          debugPrint('ZMR [RADIO]: Successfully fetched ${songs.length} songs from RD playlist.');
+          return songs;
+        } else {
+          debugPrint('ZMR [RADIO]: RD playlist result empty.');
+        }
+      } else {
+        debugPrint('ZMR [RADIO]: RD response status ${response.statusCode}');
+      }
+      
+      // Fallback: standard watch-next data structure
+      debugPrint('ZMR [RADIO]: Falling back to standard next for $videoId...');
+      final fallbackResponse = await _innerTube.next(videoId: videoId);
+      if (fallbackResponse.statusCode == 200) {
+        final fallbackSongs = _parseBrowseSongs(fallbackResponse.data);
+        debugPrint('ZMR [RADIO]: Fallback fetched ${fallbackSongs.length} songs.');
+        return fallbackSongs;
+      } else {
+        debugPrint('ZMR [RADIO]: Fallback response status ${fallbackResponse.statusCode}');
       }
     } catch (e) {
       debugPrint('ZMR [RADIO] Error: $e');
@@ -870,6 +886,7 @@ class YoutubeService {
   /// Likes a video/song on YouTube
   Future<void> likeVideo(String videoId) async {
     try {
+      await getValidTokens();
       final response = await _innerTube.like(videoId);
       if (response.statusCode != 200) {
         throw Exception('Failed to like video: ${response.statusCode}');
@@ -883,12 +900,89 @@ class YoutubeService {
   /// Removes a like from a video/song on YouTube
   Future<void> unlikeVideo(String videoId) async {
     try {
+      await getValidTokens();
       final response = await _innerTube.unlike(videoId);
       if (response.statusCode != 200) {
         throw Exception('Failed to unlike video: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('ZMR [UNLIKE] Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Adds a song to a playlist
+  Future<void> addToPlaylist(String playlistId, String videoId) async {
+    try {
+      // Check if song already exists in the playlist
+      final existingSongs = await fetchPlaylistSongs(playlistId);
+      if (existingSongs.any((s) => s.id == videoId)) {
+        throw Exception('ALREADY_EXISTS');
+      }
+
+      await getValidTokens();
+      final response = await _innerTube.editPlaylist(playlistId, [
+        {
+          'action': 'ACTION_ADD_VIDEO',
+          'addedVideoId': videoId,
+        }
+      ]);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to add to playlist: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('ZMR [ADD_TO_PLAYLIST] Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Creates a new playlist
+  Future<String?> createPlaylist(String title, {String? videoId}) async {
+    try {
+      await getValidTokens();
+      final response = await _innerTube.createPlaylist(
+        title,
+        videoIds: videoId != null ? [videoId] : null,
+      );
+      if (response.statusCode == 200) {
+        return response.data['playlistId'];
+      }
+    } catch (e) {
+      debugPrint('ZMR [CREATE_PLAYLIST] Error: $e');
+      rethrow;
+    }
+    return null;
+  }
+
+  /// Deletes a playlist on YouTube
+  Future<void> deletePlaylist(String playlistId) async {
+    try {
+      await getValidTokens();
+      final response = await _innerTube.deletePlaylist(playlistId);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete playlist: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('ZMR [DELETE_PLAYLIST] Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Changes the title of a playlist
+  Future<void> renamePlaylist(String playlistId, String newTitle) async {
+    try {
+      await getValidTokens();
+      final response = await _innerTube.editPlaylist(playlistId, [
+        {
+          'action': 'ACTION_SET_PLAYLIST_NAME',
+          'playlistName': newTitle,
+        }
+      ]);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to rename playlist: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('ZMR [RENAME_PLAYLIST] Error: $e');
       rethrow;
     }
   }

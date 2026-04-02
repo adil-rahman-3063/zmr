@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
 import 'home_page.dart';
 
@@ -20,7 +19,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.blackBase,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
           // Background Image
@@ -36,7 +35,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
               child: Container(
-                color: AppTheme.blackBase.withAlpha(160), // Dark overlay
+                color: Theme.of(context).colorScheme.surface.withAlpha(160), // Dark overlay
               ),
             ),
           ),
@@ -54,10 +53,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppTheme.whiteBase,
+                          color: Theme.of(context).colorScheme.primary,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Icon(Iconsax.music, color: AppTheme.blackBase, size: 28),
+                        child: Icon(Iconsax.music, color: Theme.of(context).colorScheme.onPrimary, size: 28),
                       ),
                       const SizedBox(width: 16),
                       Text(
@@ -66,7 +65,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 2,
-                          color: AppTheme.whiteBase,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ],
@@ -77,7 +76,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     style: GoogleFonts.outfit(
                       fontSize: 40,
                       fontWeight: FontWeight.bold,
-                      color: AppTheme.whiteBase,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -85,7 +84,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     'Experience your library in high fidelity',
                     style: GoogleFonts.outfit(
                       fontSize: 16,
-                      color: AppTheme.whiteMuted.withAlpha(128),
+                      color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
                     ),
                   ),
                   const Spacer(),
@@ -105,16 +104,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          AppTheme.whiteBase.withAlpha(20),
-                          AppTheme.whiteBase.withAlpha(5),
+                          Theme.of(context).colorScheme.primary.withAlpha(20),
+                          Theme.of(context).colorScheme.primary.withAlpha(5),
                         ],
                       ),
                       borderGradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          AppTheme.whiteBase.withAlpha(128),
-                          AppTheme.whiteBase.withAlpha(26),
+                          Theme.of(context).colorScheme.primary.withAlpha(128),
+                          Theme.of(context).colorScheme.primary.withAlpha(26),
                         ],
                       ),
                       child: Material(
@@ -146,14 +145,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.g_mobiledata, size: 42, color: AppTheme.whiteBase),
+                                  Icon(Icons.g_mobiledata, size: 42, color: Theme.of(context).colorScheme.onSurface),
                                   const SizedBox(width: 12),
                                   Text(
                                     'Continue with Google',
                                     style: GoogleFonts.outfit(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
-                                      color: AppTheme.whiteBase,
+                                      color: Theme.of(context).colorScheme.onSurface,
                                     ),
                                   ),
                                 ],
@@ -175,7 +174,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       child: Text(
                         'Skip to Home (Debug Mode)',
                         style: GoogleFonts.outfit(
-                          color: AppTheme.whiteMuted.withAlpha(128),
+                          color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
                           fontSize: 14,
                         ),
                       ),

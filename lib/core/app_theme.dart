@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Absolute Base: Deep Black
+  // Absolute Base: Deep Brown
+  static const Color brownBase = Color(0xFF2D241E); // Warm Deep Brown
   static const Color blackBase = Color(0xFF000000);
   
   // Grey shades for depth and hierarchy
@@ -18,12 +19,12 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: blackBase,
+      seedColor: brownBase,
       brightness: Brightness.light,
-      primary: blackBase,
+      primary: brownBase,
       onPrimary: whiteBase,
       surface: whiteBase,
-      onSurface: blackBase,
+      onSurface: brownBase,
     ),
     textTheme: GoogleFonts.outfitTextTheme(),
   );
@@ -31,16 +32,17 @@ class AppTheme {
   static ThemeData darkTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-    colorScheme: const ColorScheme.dark(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: brownBase,
+      brightness: Brightness.dark,
       primary: whiteBase,
       onPrimary: blackBase,
       secondary: whiteMuted,
       onSecondary: blackBase,
-      surface: greyDark,
+      surface: brownBase,
       onSurface: whiteBase,
-      surfaceContainerHighest: greyMedium,
     ),
-    scaffoldBackgroundColor: blackBase,
+    scaffoldBackgroundColor: brownBase,
     textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme).copyWith(
       displayLarge: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: whiteBase),
       titleLarge: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: whiteBase),

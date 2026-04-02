@@ -8,6 +8,10 @@ import 'package:share_plus/share_plus.dart';
 import '../providers/music_provider.dart';
 import '../widgets/squiggly_slider.dart';
 import '../widgets/player_control_button.dart';
+import '../widgets/add_to_playlist_sheet.dart';
+import '../widgets/zmr_snackbar.dart';
+import '../widgets/sleep_timer_sheet.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
   const PlayerPage({super.key});
@@ -59,18 +63,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final color = Theme.of(context).colorScheme.primary;
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
+      child: AnimatedScale(
+        scale: isActive ? 1.05 : 1.0,
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isActive ? color.withAlpha(35) : Colors.transparent,
-          border: isActive ? Border.all(color: color.withAlpha(90), width: 1.5) : null,
-        ),
-        child: Icon(
-          icon,
-          color: isActive ? color : Theme.of(context).colorScheme.onSurface.withAlpha(160),
-          size: 22,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isActive ? color.withAlpha(35) : Colors.transparent,
+            border: isActive ? Border.all(color: color.withAlpha(90), width: 1.5) : null,
+          ),
+          child: Icon(
+            icon,
+            color: isActive ? color : Theme.of(context).colorScheme.onSurface.withAlpha(160),
+            size: 22,
+          ),
         ),
       ),
     );
@@ -155,19 +163,33 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                       // Queue list
                       Expanded(
                         child: upNextIndices.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Iconsax.music_play, size: 48, color: Theme.of(context).colorScheme.onSurface.withAlpha(50)),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'Nothing up next',
-                                      style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
+                            ? playback.isFetchingMore
+                                ? Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const CircularProgressIndicator(strokeWidth: 2),
+                                        const SizedBox(height: 24),
+                                        Text(
+                                          'Discovering related music...',
+                                          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              )
+                                  )
+                                : Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Iconsax.music_play, size: 48, color: Theme.of(context).colorScheme.onSurface).animate().fade(duration: 600.ms).scale(delay: 200.ms),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'Nothing up next',
+                                          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
+                                        ),
+                                      ],
+                                    ),
+                                  )
                             : ListView.builder(
                                 controller: scrollController,
                                 itemCount: upNextIndices.length + (playback.isFetchingMore ? 1 : 0),
@@ -262,6 +284,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final isPlaying = ref.watch(isPlayingProvider).value ?? false;
     final player = ref.watch(musicPlayerProvider);
     final playback = ref.watch(playbackProvider);
+    final size = MediaQuery.of(context).size;
 
     // Auto-advance when song completes
     ref.listen(playerProcessingStateProvider, (_, state) {
@@ -350,18 +373,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                               ),
                             ],
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(32),
-                            child: currentSong.thumbnailUrl.startsWith('assets/')
-                                ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
-                                : Image.network(
-                                    currentSong.thumbnailUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                      child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                          child: Hero(
+                            tag: 'albumArt_${currentSong.id}',
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(32),
+                              child: currentSong.thumbnailUrl.startsWith('assets/')
+                                  ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
+                                  : Image.network(
+                                      currentSong.thumbnailUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                                      ),
                                     ),
-                                  ),
+                            ),
                           ),
                         ),
                       ),
@@ -397,38 +423,38 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           ],
                         ),
                       ),
+                      IconButton(
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: Colors.transparent,
+                            isScrollControlled: true,
+                            builder: (context) => AddToPlaylistSheet(song: currentSong),
+                          );
+                        },
+                        icon: Icon(
+                          Iconsax.add_square,
+                          color: Theme.of(context).colorScheme.onSurface.withAlpha(200),
+                          size: 28,
+                        ),
+                      ),
                       Consumer(
                         builder: (context, ref, child) {
                           final likedSongsAsync = ref.watch(likedSongsProvider);
-                          final isLiked = likedSongsAsync.when(
+                          final isLiked = likedSongsAsync.maybeWhen(
                             data: (songs) => songs.any((s) => s.id == currentSong.id),
-                            loading: () => false,
-                            error: (_, __) => false,
+                            orElse: () => false,
                           );
                           return IconButton(
                             onPressed: () async {
-                              final ytService = ref.read(youtubeServiceProvider);
                               try {
-                                if (isLiked) {
-                                  await ytService.unlikeVideo(currentSong.id);
-                                } else {
-                                  await ytService.likeVideo(currentSong.id);
-                                }
-                                ref.invalidate(likedSongsProvider);
+                                await ref.read(likedSongsProvider.notifier).toggleLike(currentSong);
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(isLiked ? 'Removed from Liked Songs' : 'Added to Liked Songs'),
-                                      duration: const Duration(seconds: 2),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
+                                  ZmrSnackbar.show(context, isLiked ? 'Removed from Liked Songs' : 'Added to Liked Songs');
                                 }
                               } catch (e) {
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to update: $e')),
-                                  );
+                                  ZmrSnackbar.show(context, 'Failed to update: $e');
                                 }
                               }
                             },
@@ -523,6 +549,33 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           child: Icon(Iconsax.export, color: Theme.of(context).colorScheme.onSurface.withAlpha(160), size: 22),
                         ),
                       ),
+                      // 🌙 Sleep Timer — opens timer controls, glows primary color when active
+                      GestureDetector(
+                        onTap: () {
+                          showModalBottomSheet(
+                            useRootNavigator: true,
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => const SleepTimerSheet(),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Consumer(
+                            builder: (context, ref, child) {
+                              final hasTimer = ref.watch(sleepTimerProvider) != null;
+                              return Icon(
+                                Iconsax.moon, 
+                                color: hasTimer 
+                                  ? Theme.of(context).colorScheme.primary 
+                                  : Theme.of(context).colorScheme.onSurface.withAlpha(160), 
+                                size: 22
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                       // 📋 Up Next — queue count badge
                       Builder(
                         builder: (context) {
@@ -581,19 +634,29 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
             ),
           ),
           // Queue Overlay (drawn inside the local Stack so it appears ON TOP of PlayerPage)
-          if (_isQueueVisible) ...[
-            Positioned.fill(
+          // Background Dimmer
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _isQueueVisible ? 1.0 : 0.0,
+            child: IgnorePointer(
+              ignoring: !_isQueueVisible,
               child: GestureDetector(
                 onTap: _hideQueue,
-                child: Container(
-                  color: Colors.black54,
-                ),
+                child: Container(color: Colors.black54),
               ),
             ),
-            Positioned.fill(
-              child: _buildQueueSheetContent(playback),
-            ),
-          ],
+          ),
+          
+          // Sliding Queue Content
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutQuart,
+            left: 0,
+            right: 0,
+            bottom: _isQueueVisible ? 0 : -size.height * 0.8,
+            height: size.height * 0.8,
+            child: _buildQueueSheetContent(playback),
+          ),
         ],
       ),
     );

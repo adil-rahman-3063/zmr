@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -108,6 +109,24 @@ class DriveFolderNotifier extends Notifier<String?> {
 
 final driveFolderProvider = NotifierProvider<DriveFolderNotifier, String?>(DriveFolderNotifier.new);
 
+// User onboarding: Track if swipe-up hint was shown
+class SwipeHintNotifier extends Notifier<bool> {
+  static const _key = 'zmr_swipe_hint_shown';
+
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(_key) ?? false;
+  }
+
+  void markAsShown() {
+    state = true;
+    ref.read(sharedPreferencesProvider).setBool(_key, true);
+  }
+}
+
+final swipeHintShownProvider = NotifierProvider<SwipeHintNotifier, bool>(SwipeHintNotifier.new);
+
 // Dynamic Color Scheme provider based on current song thumbnail
 final dynamicColorSchemeProvider = FutureProvider<ColorScheme?>((ref) async {
   final currentSong = ref.watch(currentSongProvider);
@@ -180,7 +199,7 @@ final musicPlayerProvider = Provider((ref) {
   
   // High-level listener for diagnostics
   player.playbackEventStream.listen((event) {
-    debugPrint('ZMR Player Event: ${event.processingState} | pos: ${event.updatePosition} | dur: ${event.duration}');
+    // Slient in production/dev for less terminal noise
   }, onError: (Object e, StackTrace st) {
     debugPrint('ZMR CRITICAL PLAYER ERROR: $e');
     debugPrint('ZMR STACKTRACE: $st');
@@ -298,6 +317,52 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     return result;
   }
 
+  /// Specialized method to start a radio session from a single song
+  Future<void> startRadio(Song song) async {
+    // 1. Initial State: Playing the seed song only, marking as fetching
+    state = state.copyWith(
+      queue: [song],
+      playlistOrder: [0],
+      currentIndex: 0,
+      originPlaylistId: null,
+      isFetchingMore: true,
+    );
+    
+    // 2. Play immediately for instant gratification (don't await so discovery starts)
+    _playCurrent();
+
+    // 3. Background Radio Discovery
+    try {
+      debugPrint('ZMR [START-RADIO]: Entering discovery phase...');
+      final ytService = ref.read(youtubeServiceProvider);
+      
+      debugPrint('ZMR [START-RADIO]: Calling ytService.fetchRadioSongs...');
+      final radioSongs = await ytService.fetchRadioSongs(song.id);
+      debugPrint('ZMR [START-RADIO]: ytService.fetchRadioSongs returned ${radioSongs.length} items.');
+      
+      if (radioSongs.isNotEmpty) {
+        final startIdx = state.queue.length;
+        final updatedQueue = [...state.queue, ...radioSongs];
+        final newIndices = List.generate(radioSongs.length, (i) => startIdx + i);
+        
+        newIndices.shuffle();
+        
+        state = state.copyWith(
+          queue: updatedQueue,
+          playlistOrder: [0, ...newIndices],
+        );
+        debugPrint('ZMR [START-RADIO]: Queue updated successfully.');
+      } else {
+        debugPrint('ZMR [START-RADIO]: Radio songs list was empty.');
+      }
+    } catch (e) {
+      debugPrint('ZMR [START-RADIO] ERROR: $e');
+    } finally {
+      debugPrint('ZMR [START-RADIO]: Discovery finished. Resetting isFetchingMore.');
+      state = state.copyWith(isFetchingMore: false);
+    }
+  }
+
   Future<void> setQueue(List<Song> songs, {int initialIndex = 0, String? playlistId}) async {
     List<int> order;
     int indexInOrder = 0;
@@ -308,8 +373,13 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       order = List.generate(songs.length, (i) => i);
       indexInOrder = initialIndex;
     }
-    state = state.copyWith(queue: songs, playlistOrder: order, currentIndex: indexInOrder);
-    if (state.currentSong != null) await _playCurrent();
+    state = state.copyWith(queue: songs, playlistOrder: order, currentIndex: indexInOrder, originPlaylistId: playlistId);
+    if (state.currentSong != null) {
+      await _playCurrent();
+      if (playlistId == null) {
+        _checkAndExtendQueue();
+      }
+    }
   }
 
   void toggleShuffle() {
@@ -337,10 +407,13 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     
     try {
       final remainingCount = state.playlistOrder.length - 1 - state.currentIndex;
+      debugPrint('ZMR [QUEUE]: Checking extension. Remaining: $remainingCount. Origin: ${state.originPlaylistId}');
       
       if (remainingCount < 10) {
-        // ... Check logic moved to helper for clarity
+        debugPrint('ZMR [QUEUE]: Near end of queue. Fetching more...');
         await _performQueueExtension();
+      } else {
+        debugPrint('ZMR [QUEUE]: Sufficient buffer remaining.');
       }
     } catch (e) {
       debugPrint('ZMR [QUEUE] Auto-extend check error: $e');
@@ -374,7 +447,7 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
           final updatedQueue = [...state.queue, ...uniqueNewSongs];
           final newOrderIndices = List.generate(uniqueNewSongs.length, (i) => startIdx + i);
           
-          if (state.isShuffle) {
+          if (state.isShuffle || state.originPlaylistId == null) {
             newOrderIndices.shuffle();
           }
           
@@ -446,7 +519,6 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       }
       if (playUrl.isEmpty) playUrl = await ytService.getDirectStreamUrl(song.id);
       player.setVolume(1.0);
-      ref.read(isFullPlayerVisibleProvider.notifier).setVisible(true);
       if (playUrl.startsWith('http')) await player.setUrl(playUrl);
       else await player.setFilePath(playUrl);
       await player.play(); 
@@ -489,7 +561,7 @@ class MusicNotifier extends Notifier<SearchResponse> {
   }
 
   Future<void> play(Song song) async {
-    await ref.read(playbackProvider.notifier).setQueue([song]);
+    await ref.read(playbackProvider.notifier).startRadio(song);
   }
 }
 
@@ -603,6 +675,39 @@ class LikedSongsNotifier extends AsyncNotifier<List<Song>> {
 
     return [];
   }
+
+  /// Optimistically toggles the liked status of a song
+  Future<void> toggleLike(Song song) async {
+    final ytService = ref.read(youtubeServiceProvider);
+    
+    // Capture current state for potential revert
+    final previousState = state;
+    final currentList = state.value ?? [];
+    final isLiked = currentList.any((s) => s.id == song.id);
+    
+    // 1. Update UI Immediately (Optimistic)
+    if (isLiked) {
+      // Remove from list
+      state = AsyncData(currentList.where((s) => s.id != song.id).toList());
+    } else {
+      // Add to front of list
+      state = AsyncData([song, ...currentList]);
+    }
+    
+    // 2. Perform Backend Update
+    try {
+      if (isLiked) {
+        await ytService.unlikeVideo(song.id);
+      } else {
+        await ytService.likeVideo(song.id);
+      }
+    } catch (e) {
+      // 3. Rollback if API fails
+      state = previousState;
+      debugPrint('ZMR [LIKE-TOGGLE] Error (Rolled back): $e');
+      rethrow;
+    }
+  }
 }
 
 // Single Playlist Songs Provider
@@ -643,3 +748,42 @@ final offlineStatusProvider = FutureProvider.family<bool, String>((ref, songId) 
   final dbService = ref.read(supabaseServiceProvider);
   return await dbService.isSongSavedOffline(songId);
 });
+
+// Sleep Timer Logic
+class SleepTimerNotifier extends Notifier<Duration?> {
+  Timer? _timer;
+
+  @override
+  Duration? build() => null;
+
+  void setTimer(Duration duration) {
+    _timer?.cancel();
+    state = duration;
+    _startCountdown();
+  }
+
+  void cancelTimer() {
+    _timer?.cancel();
+    state = null;
+  }
+
+  void _startCountdown() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (state == null) {
+        timer.cancel();
+        return;
+      }
+      
+      if (state!.inSeconds <= 0) {
+        timer.cancel();
+        state = null;
+        // Auto-pause playback when timer hits 0
+        ref.read(musicPlayerProvider).pause();
+      } else {
+        state = state! - const Duration(seconds: 1);
+      }
+    });
+  }
+}
+
+final sleepTimerProvider = NotifierProvider<SleepTimerNotifier, Duration?>(SleepTimerNotifier.new);

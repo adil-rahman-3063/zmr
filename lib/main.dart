@@ -66,7 +66,11 @@ class MyApp extends ConsumerWidget {
       themeMode: themeMode,
       home: user != null ? const HomePage() : const LoginPage(),
       builder: (context, child) {
-        return _ZmrAppShell(child: child!);
+        return Navigator(
+          onGenerateRoute: (settings) => MaterialPageRoute(
+            builder: (context) => _ZmrAppShell(child: child!),
+          ),
+        );
       },
     );
   }
@@ -98,15 +102,19 @@ class _ZmrAppShell extends ConsumerWidget {
           // Full Player (Sliding layer)
           if (user != null && currentSong != null)
             AnimatedPositioned(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCirc,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutQuart,
               top: isFullPlayerVisible ? 0 : size.height,
               left: 0,
               right: 0,
               height: size.height,
               child: IgnorePointer(
                 ignoring: !isFullPlayerVisible,
-                child: const PlayerPage(),
+                child: Navigator(
+                  onGenerateRoute: (settings) => MaterialPageRoute(
+                    builder: (context) => const PlayerPage(),
+                  ),
+                ),
               ),
             ),
         ],
@@ -163,6 +171,9 @@ class _StackedBottomShellState extends ConsumerState<_StackedBottomShell> with T
             // Re-shuffle!
             final newIndex = activeIndex == 0 ? 1 : 0;
             ref.read(shellCardIndexProvider.notifier).setIndex(newIndex);
+            
+            // Onboard: stop showing hint after first successful swipe
+            ref.read(swipeHintShownProvider.notifier).markAsShown();
           }
           
           setState(() => _dragOffset = 0);

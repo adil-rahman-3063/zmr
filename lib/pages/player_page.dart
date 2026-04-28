@@ -13,6 +13,8 @@ import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/zmr_snackbar.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import '../models/song_model.dart';
+import '../models/artist_model.dart';
+import 'artist_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -138,7 +140,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               title: Text('Artist Profile', style: GoogleFonts.outfit()),
               onTap: () {
                 Navigator.pop(context);
-                ZmrSnackbar.show(context, 'Artist profile coming soon!');
+                if (currentSong.artistId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ArtistPage(
+                        artist: Artist(
+                          id: currentSong.artistId!,
+                          name: currentSong.artist,
+                          thumbnailUrl: '', // Will be fetched or show placeholder
+                        ),
+                      ),
+                    ),
+                  );
+                } else {
+                  ZmrSnackbar.show(context, 'Artist profile not available for this song');
+                }
               },
             ),
           ],
@@ -581,11 +598,31 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              currentSong.artist,
-                              style: GoogleFonts.outfit(
-                                color: Theme.of(context).colorScheme.onSurface.withAlpha(200),
-                                fontSize: 18,
+                            GestureDetector(
+                              onTap: () {
+                                if (currentSong.artistId != null) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ArtistPage(
+                                        artist: Artist(
+                                          id: currentSong.artistId!,
+                                          name: currentSong.artist,
+                                          thumbnailUrl: '',
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Text(
+                                currentSong.artist,
+                                style: GoogleFonts.outfit(
+                                  color: Theme.of(context).colorScheme.onSurface.withAlpha(200),
+                                  fontSize: 18,
+                                  decoration: currentSong.artistId != null ? TextDecoration.underline : null,
+                                  decorationColor: Theme.of(context).colorScheme.onSurface.withAlpha(100),
+                                ),
                               ),
                             ),
                           ],

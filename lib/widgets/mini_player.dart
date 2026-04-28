@@ -94,23 +94,12 @@ class GlobalMiniPlayer extends ConsumerWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          currentSong.title,
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ).animate().fade(delay: 100.ms).slideX(begin: -0.1),
-                        Text(
-                          currentSong.artist,
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 12),
-                          maxLines: 1,
-                        ).animate().fade(delay: 200.ms).slideX(begin: -0.1),
-                      ],
-                    ),
+                    child: Text(
+                      currentSong.title,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ).animate().fade(delay: 100.ms).slideX(begin: -0.1),
                   ),
                   IconButton(
                     onPressed: () {

@@ -960,7 +960,7 @@ class _ArtistListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: () {
-        // Future: Navigate to Artist profiles
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistPage(artist: artist)));
       },
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
@@ -1015,7 +1015,32 @@ class _SongListItem extends ConsumerWidget {
 
         ],
       ),
-      subtitle: Text(song.artist, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(128))),
+      subtitle: GestureDetector(
+        onTap: () {
+          if (song.artistId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ArtistPage(
+                  artist: Artist(
+                    id: song.artistId!,
+                    name: song.artist,
+                    thumbnailUrl: '',
+                  ),
+                ),
+              ),
+            );
+          }
+        },
+        child: Text(
+          song.artist,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+            decoration: song.artistId != null ? TextDecoration.underline : null,
+            decorationColor: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+          ),
+        ),
+      ),
       trailing: IconButton(
         icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
         onPressed: () {
@@ -1595,13 +1620,34 @@ class _SongCard extends ConsumerWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              song.artist,
-              style: GoogleFonts.outfit(
-                color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
-                fontSize: 11,
+            GestureDetector(
+              onTap: () {
+                if (song.artistId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ArtistPage(
+                        artist: Artist(
+                          id: song.artistId!,
+                          name: song.artist,
+                          thumbnailUrl: '',
+                        ),
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                song.artist,
+                style: GoogleFonts.outfit(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                  fontSize: 11,
+                  decoration: song.artistId != null ? TextDecoration.underline : null,
+                  decorationColor: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 1,
             ),
           ],
         ),
@@ -1735,11 +1781,34 @@ class _SongGridItem extends ConsumerWidget {
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    song.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(128), fontSize: 12),
+                  GestureDetector(
+                    onTap: () {
+                      if (song.artistId != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ArtistPage(
+                              artist: Artist(
+                                id: song.artistId!,
+                                name: song.artist,
+                                thumbnailUrl: '',
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(
+                      song.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                        fontSize: 12,
+                        decoration: song.artistId != null ? TextDecoration.underline : null,
+                        decorationColor: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+                      ),
+                    ),
                   ),
                 ],
               ),

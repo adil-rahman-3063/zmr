@@ -1,3 +1,21 @@
+# ZMR Music v1.1.0 - The Artist Experience 🎤
+
+This update transforms how you interact with your favorite musicians, bringing dedicated profiles and deep-linking across the entire app.
+
+### ✨ New Features
+* **Artist Profiles**: Deep dive into any artist's library. View popular songs, categorized albums, singles, and new releases with a stunning new glassmorphic profile view.
+* **Subscription Management**: Follow and unfollow artists directly from their profile page. Your followed artists section on the home screen will stay perfectly in sync.
+* **Deep Linking Everywhere**: 
+    * Click any artist name in the search results, home feed, or player to jump to their profile.
+    * Added subtle visual indicators (underlines) to clickable artist names for better discoverability.
+* **Refined Mini Player**: Simplified the mini player design by focusing on the song title for a more minimalist look.
+
+### 🛠️ Technical Improvements
+* **Enhanced Metadata Extraction**: Updated the YouTube service to automatically resolve and store Artist IDs, enabling seamless navigation for all parsed tracks.
+* **Performance Polish**: Optimized the transition animations between the home screen and artist profiles for 60fps fluidity.
+
+---
+
 # ZMR Music v1.0.1 - Infrastructure Update 🛠️
 
 This update focuses on reinforcing the application's underlying infrastructure to ensure consistent data synchronization and smoother playback reliability.

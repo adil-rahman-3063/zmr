@@ -26,6 +26,51 @@ class ArtistPage extends ConsumerWidget {
             pinned: true,
             backgroundColor: colorScheme.surface,
             surfaceTintColor: Colors.transparent,
+            actions: [
+              Consumer(
+                builder: (context, ref, child) {
+                  final followingAsync = ref.watch(followedArtistsProvider);
+                  return followingAsync.maybeWhen(
+                    data: (artists) {
+                      final isFollowing = artists.any((a) => a.id == artist.id);
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: ChoiceChip(
+                          label: Text(isFollowing ? 'Following' : 'Follow'),
+                          selected: isFollowing,
+                          onSelected: (val) async {
+                            try {
+                              if (isFollowing) {
+                                await ref.read(youtubeServiceProvider).unsubscribeFromArtist(artist.id);
+                              } else {
+                                await ref.read(youtubeServiceProvider).subscribeToArtist(artist.id);
+                              }
+                              ref.invalidate(followedArtistsProvider);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            }
+                          },
+                          labelStyle: GoogleFonts.outfit(
+                            color: isFollowing ? colorScheme.onPrimary : colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          selectedColor: colorScheme.primary,
+                          backgroundColor: colorScheme.surfaceContainerHighest.withAlpha(150),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          showCheckmark: false,
+                        ),
+                      );
+                    },
+                    orElse: () => const SizedBox.shrink(),
+                  );
+                },
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: false,
               titlePadding: const EdgeInsets.only(left: 24, bottom: 16),

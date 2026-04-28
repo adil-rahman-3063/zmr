@@ -317,7 +317,21 @@ class YoutubeService {
       if (overlayWatch != null) {
         final id = overlayWatch['videoId'];
         final subtitle = _getText(renderer['subtitle']);
-        return Song(id: id, title: title, artist: subtitle, duration: '', thumbnailUrl: thumbUrl);
+        
+        // Try to get artistId from subtitle runs
+        String? artistId;
+        final runs = _findAllElements(renderer['subtitle'], 'runs');
+        if (runs.isNotEmpty && runs[0] is List) {
+          final artistRun = (runs[0] as List).firstWhere(
+            (r) => r['navigationEndpoint']?['browseEndpoint']?['browseEndpointContextSupportedConfigs']?['browseEndpointContextMusicConfig']?['pageType'] == 'MUSIC_PAGE_TYPE_ARTIST',
+            orElse: () => null
+          );
+          if (artistRun != null) {
+            artistId = artistRun['navigationEndpoint']?['browseEndpoint']?['browseId'];
+          }
+        }
+        
+        return Song(id: id, title: title, artist: subtitle, artistId: artistId, duration: '', thumbnailUrl: thumbUrl);
       }
 
       // Playlist
@@ -361,6 +375,7 @@ class YoutubeService {
         if (id == null) return null;
         
         String artist = 'Unknown Artist';
+        String? artistId;
         if (flexCols.length > 1) {
           final subtitleNode = flexCols[1];
           artist = _getText(subtitleNode);
@@ -372,11 +387,14 @@ class YoutubeService {
                (r) => r['navigationEndpoint']?['browseEndpoint']?['browseEndpointContextSupportedConfigs']?['browseEndpointContextMusicConfig']?['pageType'] == 'MUSIC_PAGE_TYPE_ARTIST',
                orElse: () => null
              );
-             if (artistRun != null) artist = artistRun['text'];
+             if (artistRun != null) {
+               artist = artistRun['text'];
+               artistId = artistRun['navigationEndpoint']?['browseEndpoint']?['browseId'];
+             }
           }
         }
         
-        return Song(id: id, title: title, artist: artist, duration: '', thumbnailUrl: thumbUrl);
+        return Song(id: id, title: title, artist: artist, artistId: artistId, duration: '', thumbnailUrl: thumbUrl);
       }
       
       // Handle Playlists/Albums in responsive lists (less common in home, but possible)
@@ -578,8 +596,32 @@ class YoutubeService {
         final thumbnails = _getThumbnails(item);
         final thumbUrl = thumbnails.isNotEmpty ? thumbnails.last : '';
 
+        // Try to get artistId from runs
+        String? artistId;
+        dynamic runsNode;
+        if (item.containsKey('flexColumns')) {
+          final flexCols = item['flexColumns'] as List?;
+          if (flexCols != null && flexCols.length > 1) {
+            runsNode = flexCols[1];
+          }
+        } else {
+          runsNode = item['subtitle'] ?? item['artistName'] ?? item['longBylineText'] ?? item['shortBylineText'];
+        }
+        if (runsNode != null) {
+          final runs = _findAllElements(runsNode, 'runs');
+          if (runs.isNotEmpty && runs[0] is List) {
+            final artistRun = (runs[0] as List).firstWhere(
+              (r) => r['navigationEndpoint']?['browseEndpoint']?['browseEndpointContextSupportedConfigs']?['browseEndpointContextMusicConfig']?['pageType'] == 'MUSIC_PAGE_TYPE_ARTIST',
+              orElse: () => null
+            );
+            if (artistRun != null) {
+              artistId = artistRun['navigationEndpoint']?['browseEndpoint']?['browseId'];
+            }
+          }
+        }
+
         if (songs.any((s) => s.id == id)) continue;
-        songs.add(Song(id: id, title: title, artist: artist, duration: '', thumbnailUrl: thumbUrl));
+        songs.add(Song(id: id, title: title, artist: artist, artistId: artistId, duration: '', thumbnailUrl: thumbUrl));
       }
 
       if (songs.length < 10) { 

@@ -2,6 +2,7 @@ class Song {
   final String id;
   final String title;
   final String artist;
+  final String? artistId;
   final String duration;
   final String thumbnailUrl;
   final bool isMusic;
@@ -10,6 +11,7 @@ class Song {
     required this.id,
     required this.title,
     required this.artist,
+    this.artistId,
     required this.duration,
     required this.thumbnailUrl,
     this.isMusic = true,
@@ -33,6 +35,7 @@ class Song {
       'id': id,
       'title': title,
       'artist': artist,
+      'artistId': artistId,
       'duration': duration,
       'thumbnailUrl': thumbnailUrl,
       'isMusic': isMusic,
@@ -44,6 +47,7 @@ class Song {
       id: map['id'] ?? '',
       title: map['title'] ?? '',
       artist: map['artist'] ?? '',
+      artistId: map['artistId'],
       duration: map['duration'] ?? '',
       thumbnailUrl: map['thumbnailUrl'] ?? '',
       isMusic: map['isMusic'] ?? true,

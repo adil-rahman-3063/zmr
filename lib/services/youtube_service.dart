@@ -905,8 +905,27 @@ class YoutubeService {
         final shelves = _findAllElements(data, 'musicShelfRenderer');
         for (var shelf in shelves) {
           final title = _getText(shelf['title']);
-          if (title.toLowerCase().contains('song')) {
+          if (title.toLowerCase().contains('song') || title.toLowerCase().contains('track')) {
             popularSongs.addAll(_parseBrowseSongs(shelf));
+            
+            // Try to fetch EVEN MORE songs if a "See all" endpoint exists
+            try {
+               final bottomEndpoint = shelf['bottomEndpoint'] ?? 
+                                    shelf['title']?['runs']?[0]?['navigationEndpoint'];
+               final seeAllBrowseId = bottomEndpoint?['browseEndpoint']?['browseId'];
+               
+               if (seeAllBrowseId != null) {
+                 final moreSongsResponse = await _innerTube.browse(browseId: seeAllBrowseId);
+                 if (moreSongsResponse.statusCode == 200) {
+                   final moreSongs = _parseBrowseSongs(moreSongsResponse.data);
+                   for (var s in moreSongs) {
+                     if (!popularSongs.any((ps) => ps.id == s.id)) popularSongs.add(s);
+                   }
+                 }
+               }
+            } catch (e) {
+               debugPrint('ZMR [Artist] Failed to fetch extended songs: $e');
+            }
             break; 
           }
         }
@@ -914,10 +933,19 @@ class YoutubeService {
         // 2. Find Other Sections (Albums, Singles, etc.)
         final carousels = _findAllElements(data, 'musicCarouselShelfRenderer');
         for (var carousel in carousels) {
-          final title = _getText(carousel['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']);
+          final titleNode = carousel['header']?['musicCarouselShelfBasicHeaderRenderer']?['title'];
+          final title = _getText(titleNode);
+          
           final items = _parseBrowseSongs(carousel);
           if (items.isNotEmpty) {
-            sections.add(ArtistSection(title: title, items: items));
+            // If we found a section explicitly called "Songs" but popularSongs was small, use it
+            if (popularSongs.length < 5 && (title.toLowerCase().contains('song') || title.toLowerCase().contains('track'))) {
+              for (var s in items) {
+                if (!popularSongs.any((ps) => ps.id == s.id)) popularSongs.add(s);
+              }
+            } else {
+              sections.add(ArtistSection(title: title, items: items));
+            }
           }
         }
         

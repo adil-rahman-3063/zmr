@@ -13,7 +13,13 @@ import 'pages/player_page.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/frosted_nav_bar.dart';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'services/audio_handler.dart';
+import 'package:just_audio/just_audio.dart';
+
+late AudioHandler zmrAudioHandler;
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +28,31 @@ void main() async {
   final session = await AudioSession.instance;
   await session.configure(const AudioSessionConfiguration.music());
   await session.setActive(true);
+
+  // Initialize Audio Service for background playback
+  debugPrint('ZMR [BOOT]: Initializing AudioService...');
+  try {
+    zmrAudioHandler = await AudioService.init(
+      builder: () {
+        final player = AudioPlayer(
+          userAgent: "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+        );
+        return ZmrAudioHandler(player);
+      },
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.example.zmr.channel.audio',
+        androidNotificationChannelName: 'Music Playback',
+        androidNotificationIcon: 'mipmap/launcher_icon',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+        notificationColor: Color(0xFF121212),
+      ),
+    );
+    debugPrint('ZMR [BOOT]: AudioService initialized successfully.');
+  } catch (e) {
+    debugPrint('ZMR [BOOT] CRITICAL: AudioService failed to initialize: $e');
+    // Fallback or handle error - though AudioService is usually required for this app's architecture now
+  }
   
   final prefs = await SharedPreferences.getInstance();
 
@@ -50,6 +81,13 @@ class MyApp extends ConsumerWidget {
     final navKey = ref.read(navigatorKeyProvider);
     final dynamicColors = ref.watch(dynamicColorSchemeProvider).value;
 
+    // Force navigation back to root on sign out
+    ref.listen<User?>(currentUserProvider, (previous, next) {
+      if (next == null && previous != null) {
+        navKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+      }
+    });
+
     final defaultDarkTheme = AppTheme.darkTheme;
     final theme = themeMode == ThemeMode.light ? AppTheme.lightTheme : (
         dynamicColors != null 
@@ -66,9 +104,12 @@ class MyApp extends ConsumerWidget {
       themeMode: themeMode,
       home: user != null ? const HomePage() : const LoginPage(),
       builder: (context, child) {
-        return Navigator(
-          onGenerateRoute: (settings) => MaterialPageRoute(
-            builder: (context) => _ZmrAppShell(child: child!),
+        return HeroControllerScope.none(
+          child: Navigator(
+            key: rootNavigatorKey,
+            onGenerateRoute: (settings) => MaterialPageRoute(
+              builder: (context) => _ZmrAppShell(child: child!),
+            ),
           ),
         );
       },
@@ -110,9 +151,11 @@ class _ZmrAppShell extends ConsumerWidget {
               height: size.height,
               child: IgnorePointer(
                 ignoring: !isFullPlayerVisible,
-                child: Navigator(
-                  onGenerateRoute: (settings) => MaterialPageRoute(
-                    builder: (context) => const PlayerPage(),
+                child: HeroControllerScope.none(
+                  child: Navigator(
+                    onGenerateRoute: (settings) => MaterialPageRoute(
+                      builder: (context) => const PlayerPage(),
+                    ),
                   ),
                 ),
               ),

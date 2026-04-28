@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import '../widgets/player_control_button.dart';
 import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/zmr_snackbar.dart';
 import '../widgets/sleep_timer_sheet.dart';
+import '../models/song_model.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -22,6 +24,8 @@ class PlayerPage extends ConsumerStatefulWidget {
 
 class _PlayerPageState extends ConsumerState<PlayerPage> {
   bool _isQueueVisible = false;
+  bool _showLyrics = false;
+  final ScrollController _lyricsScrollController = ScrollController();
 
   void _hideQueue() {
     setState(() {
@@ -81,6 +85,124 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showMoreOptions(Song currentSong) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        padding: const EdgeInsets.only(top: 12, bottom: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: Icon(Iconsax.export, color: Theme.of(context).colorScheme.onSurface),
+              title: Text('Share Song', style: GoogleFonts.outfit()),
+              subtitle: Text('Send to friends or copy link', style: GoogleFonts.outfit(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withAlpha(120))),
+              onTap: () {
+                Navigator.pop(context);
+                final deepLink = 'https://zmr.app/song/${currentSong.id}';
+                final ytLink = 'https://music.youtube.com/watch?v=${currentSong.id}';
+                Share.share(
+                  '🎵 ${currentSong.title} by ${currentSong.artist}\n\nListen on ZMR: $deepLink\n\nOr on YouTube Music: $ytLink',
+                  subject: '${currentSong.title} — ${currentSong.artist}',
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Iconsax.music_play, color: Theme.of(context).colorScheme.onSurface),
+              title: Text('Go to Album', style: GoogleFonts.outfit()),
+              onTap: () {
+                Navigator.pop(context);
+                ZmrSnackbar.show(context, 'Album view coming soon!');
+              },
+            ),
+            ListTile(
+              leading: Icon(Iconsax.user, color: Theme.of(context).colorScheme.onSurface),
+              title: Text('Artist Profile', style: GoogleFonts.outfit()),
+              onTap: () {
+                Navigator.pop(context);
+                ZmrSnackbar.show(context, 'Artist profile coming soon!');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLyricsOverlay(Song currentSong, Duration position) {
+    final lyricsAsync = ref.watch(lyricsProvider(currentSong.id));
+    
+    return lyricsAsync.when(
+      data: (lyrics) {
+        if (lyrics == null || lyrics.lines.isEmpty) {
+          return Center(
+            child: Text(
+              'Lyrics not available',
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 18),
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        int currentLineIdx = -1;
+        if (lyrics.isSynced) {
+          for (int i = 0; i < lyrics.lines.length; i++) {
+            if (position >= lyrics.lines[i].timestamp) {
+              currentLineIdx = i;
+            } else {
+              break;
+            }
+          }
+        }
+
+        return ListView.builder(
+          controller: _lyricsScrollController,
+          padding: const EdgeInsets.symmetric(vertical: 140, horizontal: 24),
+          itemCount: lyrics.lines.length,
+          itemBuilder: (context, index) {
+            final line = lyrics.lines[index];
+            final bool isActive = index == currentLineIdx;
+            
+            return AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 300),
+              style: GoogleFonts.outfit(
+                fontSize: isActive ? 22 : 18,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                color: isActive ? Colors.white : Colors.white.withAlpha(80),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    line.text,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator(color: Colors.white54)),
+      error: (e, _) => Center(child: Text('Lyrics load failed', style: GoogleFonts.outfit(color: Colors.white70))),
     );
   }
 
@@ -302,6 +424,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final processingState = ref.watch(playerProcessingStateProvider).value ?? ProcessingState.idle;
     final isLoading = processingState == ProcessingState.buffering || processingState == ProcessingState.loading;
 
+    // Lyrics Auto-scroll implementation
+    if (_showLyrics) {
+      ref.listen(playerPositionProvider, (previous, next) {
+        final pos = next.value ?? Duration.zero;
+        final lyricsAsync = ref.read(lyricsProvider(currentSong.id));
+        lyricsAsync.whenData((lyrics) {
+          if (lyrics != null && lyrics.isSynced && _lyricsScrollController.hasClients) {
+            int lineIdx = -1;
+            for (int i = 0; i < lyrics.lines.length; i++) {
+              if (pos >= lyrics.lines[i].timestamp) {
+                lineIdx = i;
+              } else {
+                break;
+              }
+            }
+            if (lineIdx != -1) {
+              // Estimate line height + padding = ~48 pixels
+              _lyricsScrollController.animateTo(
+                (lineIdx * 48.0),
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutQuart,
+              );
+            }
+          }
+        });
+      });
+    }
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
@@ -350,7 +500,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         ),
                       ),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () => _showMoreOptions(currentSong),
                         icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface),
                       ),
                     ],
@@ -362,33 +512,51 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                       constraints: const BoxConstraints(maxHeight: 320),
                       child: AspectRatio(
                         aspectRatio: 1,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(32),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Theme.of(context).colorScheme.shadow.withAlpha(100),
-                                blurRadius: 40,
-                                offset: const Offset(0, 20),
-                              ),
-                            ],
-                          ),
-                          child: Hero(
-                            tag: 'albumArt_${currentSong.id}',
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(32),
-                              child: currentSong.thumbnailUrl.startsWith('assets/')
-                                  ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
-                                  : Image.network(
-                                      currentSong.thumbnailUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                        child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          child: _showLyrics
+                            ? Container(
+                                key: const ValueKey('lyrics'),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(32),
+                                  color: Colors.black38,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(32),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: Opacity(
+                                          opacity: 0.5,
+                                          child: ImageFiltered(
+                                            imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                                            child: currentSong.thumbnailUrl.startsWith('assets/')
+                                                ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
+                                                : Image.network(currentSong.thumbnailUrl, fit: BoxFit.cover),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                            ),
-                          ),
+                                      _buildLyricsOverlay(currentSong, position),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : Hero(
+                                tag: 'albumArt_${currentSong.id}',
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(32),
+                                  child: currentSong.thumbnailUrl.startsWith('assets/')
+                                      ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
+                                      : Image.network(
+                                          currentSong.thumbnailUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                            child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                                          ),
+                                        ),
+                                ),
+                              ),
                         ),
                       ),
                     ),
@@ -534,19 +702,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         isActive: playback.isShuffle,
                         onTap: () => ref.read(playbackProvider.notifier).toggleShuffle(),
                       ),
-                      // 📤 Share — opens native Android share sheet with deep link
+                      // 🎵 Lyrics — toggles the view on the album art
                       GestureDetector(
                         onTap: () {
-                          final deepLink = 'https://zmr.app/song/${currentSong.id}';
-                          final ytLink = 'https://music.youtube.com/watch?v=${currentSong.id}';
-                          Share.share(
-                            '🎵 ${currentSong.title} by ${currentSong.artist}\n\nListen on ZMR: $deepLink\n\nOr on YouTube Music: $ytLink',
-                            subject: '${currentSong.title} — ${currentSong.artist}',
-                          );
+                          setState(() {
+                            _showLyrics = !_showLyrics;
+                          });
                         },
                         child: Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: Icon(Iconsax.export, color: Theme.of(context).colorScheme.onSurface.withAlpha(160), size: 22),
+                           padding: const EdgeInsets.all(10.0),
+                           child: Icon(
+                            Iconsax.document_text, 
+                            color: _showLyrics 
+                              ? Theme.of(context).colorScheme.primary 
+                              : Theme.of(context).colorScheme.onSurface.withAlpha(160), 
+                            size: 22
+                          ),
                         ),
                       ),
                       // 🌙 Sleep Timer — opens timer controls, glows primary color when active

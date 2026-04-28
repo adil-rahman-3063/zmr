@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -143,35 +144,7 @@ class PlaylistPage extends ConsumerWidget {
                     return Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          onPressed: () async {
-                            final songsAsync = ref.read(playlistSongsProvider(playlist.id));
-                            final songs = songsAsync.asData?.value;
-                            if (songs == null || songs.isEmpty) return;
 
-                            final downloader = ref.read(downloadServiceProvider);
-                            final downloadLoc = ref.read(downloadLocationProvider);
-                            final folderId = ref.read(driveFolderProvider);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Starting download for ${songs.length} songs...'),
-                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              ),
-                            );
-
-                            for (var song in songs) {
-                              if (downloadLoc == 'drive') {
-                                await downloader.downloadSongToDrive(song, folderId: folderId);
-                              } else {
-                                await downloader.downloadSongLocally(song);
-                              }
-                            }
-                            ref.read(offlineRefreshProvider.notifier).refresh();
-                          },
-                          icon: Icon(Iconsax.import_1, color: Theme.of(context).colorScheme.onSurface, size: 28),
-                          tooltip: 'Download All',
-                        ),
                         IconButton(
                           onPressed: () => _showPlaylistMenu(context, ref),
                           icon: Icon(Iconsax.more, color: Theme.of(context).colorScheme.onSurface, size: 28),
@@ -420,16 +393,7 @@ class _SongListItem extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          ref.watch(offlineStatusProvider(song.id)).when(
-            data: (isOffline) => isOffline 
-              ? const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.check_circle, color: Colors.green, size: 14),
-                )
-              : const SizedBox.shrink(),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
+
         ],
       ),
       subtitle: Text(
@@ -488,23 +452,7 @@ class _SongListItem extends ConsumerWidget {
                           );
                         },
                       ),
-                      ListTile(
-                        leading: Icon(Iconsax.import, color: Theme.of(context).colorScheme.onSurface),
-                        title: Text('Download Offline', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          final downloadLoc = ref.read(downloadLocationProvider);
-                          final downloader = ref.read(downloadServiceProvider);
-                          
-                          if (downloadLoc == 'drive') {
-                            final folderId = ref.read(driveFolderProvider);
-                            await downloader.downloadSongToDrive(song, folderId: folderId);
-                          } else {
-                            await downloader.downloadSongLocally(song);
-                          }
-                          ref.read(offlineRefreshProvider.notifier).refresh();
-                        },
-                      ),
+
                       ListTile(
                         leading: Icon(Iconsax.share, color: Theme.of(context).colorScheme.onSurface),
                         title: Text('Share Link', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),

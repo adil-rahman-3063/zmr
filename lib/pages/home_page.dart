@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -12,9 +13,13 @@ import '../models/playlist_model.dart';
 import '../models/artist_model.dart';
 import '../models/home_section.dart';
 import '../providers/music_provider.dart';
+import 'playlist_page.dart';
+import 'artist_page.dart';
+import 'settings_page.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/add_to_playlist_sheet.dart';
-import 'playlist_page.dart';
+import '../widgets/zmr_snackbar.dart';
+import '../main.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -26,6 +31,64 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOnboarding();
+    });
+  }
+
+  void _checkOnboarding() {
+    final onboardingShown = ref.read(cookieOnboardingProvider);
+    final hasCookies = ref.read(youtubeCookieProvider) != null;
+    
+    if (!onboardingShown && !hasCookies) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Row(
+            children: [
+              Icon(Iconsax.info_circle, color: Theme.of(context).colorScheme.primary, size: 28),
+              const SizedBox(width: 12),
+              Text('Welcome to ZMR!', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            'To connect your YouTube Music library and see your playlists, you will need to provide authentication cookies.\n\nInstructions on how to do this can be found in the Settings page.',
+            style: GoogleFonts.outfit(fontSize: 15),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                ref.read(cookieOnboardingProvider.notifier).markAsShown();
+                Navigator.pop(ctx);
+              },
+              child: Text('Later', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(150))),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(cookieOnboardingProvider.notifier).markAsShown();
+                Navigator.pop(ctx);
+                // Switch to profile tab
+                ref.read(bottomNavProvider.notifier).setIndex(3);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text('Go to Settings', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -191,6 +254,22 @@ class _HomePageState extends ConsumerState<HomePage> {
                     emptyMessage: 'Connect your YouTube library to see your playlists',
                   ),
                   const SizedBox(height: 32),
+                  const _SectionHeader(title: 'Following Artists'),
+                  const SizedBox(height: 16),
+                  _buildLibrarySection(
+                    asyncValue: ref.watch(followedArtistsProvider),
+                    itemBuilder: (artists) => SizedBox(
+                      height: 180, 
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.only(left: 24),
+                        itemCount: artists.length,
+                        itemBuilder: (context, index) => _ArtistCard(artist: artists[index] as Artist),
+                      ),
+                    ),
+                    emptyMessage: 'Follow artists on YouTube Music to see them here',
+                  ),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -198,6 +277,9 @@ class _HomePageState extends ConsumerState<HomePage> {
           
           // Home Feed (Quick Picks, etc.)
           _buildHomeFeedSliver(homeFeedAsync),
+
+          // Followed Artists New Releases
+          _buildFollowedArtistsSections(ref),
   
           // Trending Section
           _buildTrendingSectionSliver(trendingSongsAsync),
@@ -205,6 +287,58 @@ class _HomePageState extends ConsumerState<HomePage> {
           const SliverToBoxAdapter(child: SizedBox(height: 150)),
         ],
       ),
+    );
+  }
+
+  Widget _buildFollowedArtistsSections(WidgetRef ref) {
+    final artistsAsync = ref.watch(followedArtistsProvider);
+
+    return artistsAsync.when(
+      data: (artists) {
+        if (artists.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final artist = artists[index];
+              final releasesAsync = ref.watch(artistNewReleasesProvider(artist.id));
+
+              return releasesAsync.when(
+                data: (songs) {
+                  if (songs.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: _SectionHeader(title: '${artist.name} - New Releases'),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 180,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(left: 24),
+                            itemCount: songs.length,
+                            itemBuilder: (context, songIdx) => _SongCard(song: songs[songIdx]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).animate().fade(delay: (index * 100).ms, duration: 400.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart);
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              );
+            },
+            childCount: artists.length,
+          ),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
     );
   }
 
@@ -237,28 +371,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget _buildHomeFeedSliver(AsyncValue<List<HomeSection>> asyncValue) {
     return asyncValue.when(
       data: (sections) {
-        // Filter out sections as requested
-        final filteredSections = sections.where((s) {
-          final title = s.title.toLowerCase();
-          // Keep Quick Picks
-          if (title.contains('quick picks')) return true;
-          
-          // Remove these specific sections
-          return !title.contains('listen again') && 
-                 !title.contains('liked songs') && 
-                 !title.contains('liked music') &&
-                 !title.contains('your likes') &&
-                 !title.contains('favorites') &&
-                 !title.contains('fresh find');
-        }).toList();
-
-        if (filteredSections.isEmpty) {
+        if (sections.isEmpty) {
            return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
         return SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
-              final section = filteredSections[index];
+              final section = sections[index];
               final titleLower = section.title.toLowerCase();
               final hasSongs = section.items.any((i) => i is Song);
               
@@ -314,7 +433,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
               ).animate().fade(delay: (index * 100).ms, duration: 400.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart);
             },
-            childCount: filteredSections.length,
+            childCount: sections.length,
           ),
         );
       },
@@ -505,8 +624,14 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
             actions: [
               IconButton(
+                icon: Icon(Iconsax.add_square, color: Theme.of(context).colorScheme.primary),
+                onPressed: () => _showAddPlaylistDialog(context, ref),
+                tooltip: 'New Playlist',
+              ),
+              IconButton(
                 icon: Icon(Iconsax.refresh, color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
                 onPressed: () => ref.refresh(userPlaylistsProvider),
+                tooltip: 'Refresh Library',
               ),
               const SizedBox(width: 8),
             ],
@@ -667,9 +792,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ),
           const SizedBox(height: 48),
-          const _DownloadSettingsTile(),
-          const SizedBox(height: 16),
-          const _DownloadActivityTile(),
+          const _CookieSettingsTile(),
           const SizedBox(height: 48),
             SizedBox(
               width: double.infinity,
@@ -788,18 +911,36 @@ void showCookieInputDialog(BuildContext context, WidgetRef ref) {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    ref.read(youtubeCookieProvider.notifier).setCookies(controller.text);
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: ValueNotifier<bool>(false), // Placeholder, I'll use a local state
+                  builder: (context, loading, _) => ElevatedButton(
+                    onPressed: () async {
+                      final cookies = controller.text.trim();
+                      if (cookies.isEmpty) return;
+                      
+                      ref.read(youtubeCookieProvider.notifier).setCookies(cookies);
+                      
+                      // Test the connection immediately
+                      final isValid = await ref.read(youtubeServiceProvider).testAuth();
+                      
+                      if (context.mounted) {
+                        if (isValid) {
+                          ZmrSnackbar.show(context, 'Successfully connected to YouTube Music!');
+                          Navigator.pop(context);
+                        } else {
+                          ZmrSnackbar.show(context, 'Failed to connect. Please check your cookies.');
+                          // Keep the dialog open for correction
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Connect'),
                   ),
-                  child: const Text('Connect'),
                 ),
               ),
             ],
@@ -871,16 +1012,7 @@ class _SongListItem extends ConsumerWidget {
       title: Row(
         children: [
           Expanded(child: Text(song.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold), maxLines: 1)),
-          ref.watch(offlineStatusProvider(song.id)).when(
-            data: (isOffline) => isOffline 
-              ? const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.check_circle, color: Colors.green, size: 14),
-                )
-              : const SizedBox.shrink(),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
+
         ],
       ),
       subtitle: Text(song.artist, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(128))),
@@ -929,23 +1061,6 @@ class _SongListItem extends ConsumerWidget {
                         backgroundColor: Colors.transparent,
                         builder: (context) => AddToPlaylistSheet(song: song),
                       );
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(Iconsax.import, color: Theme.of(context).colorScheme.onSurface),
-                    title: Text('Download Offline', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface)),
-                    onTap: () async {
-                      Navigator.pop(ctx);
-                      final downloadLoc = ref.read(downloadLocationProvider);
-                      final downloader = ref.read(downloadServiceProvider);
-                      
-                      if (downloadLoc == 'drive') {
-                        final folderId = ref.read(driveFolderProvider);
-                        await downloader.downloadSongToDrive(song, folderId: folderId);
-                      } else {
-                        await downloader.downloadSongLocally(song);
-                      }
-                      ref.read(offlineRefreshProvider.notifier).refresh();
                     },
                   ),
                   ListTile(
@@ -1001,14 +1116,14 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _PlaylistCard extends StatelessWidget {
+class _PlaylistCard extends ConsumerWidget {
   final ZmrPlaylist playlist;
   final bool showCount;
   final bool useFullWidth;
   const _PlaylistCard({required this.playlist, this.showCount = true, this.useFullWidth = false});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -1018,6 +1133,7 @@ class _PlaylistCard extends StatelessWidget {
           ),
         );
       },
+      onLongPress: () => _showPlaylistOptions(context, ref, playlist),
       child: Container(
         width: useFullWidth ? null : 150,
         margin: useFullWidth ? EdgeInsets.zero : const EdgeInsets.only(right: 16),
@@ -1070,6 +1186,7 @@ class _PlaylistCard extends StatelessWidget {
   }
 }
 
+
 class _AddPlaylistTile extends ConsumerWidget {
   const _AddPlaylistTile();
 
@@ -1097,14 +1214,32 @@ class _AddPlaylistTile extends ConsumerWidget {
                   ),
                   Positioned.fill(
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                       child: Container(
-                        color: Colors.transparent,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withAlpha(20),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         child: Center(
-                          child: Icon(
-                            Iconsax.add_circle,
-                            size: 40,
-                            color: Theme.of(context).colorScheme.primary,
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withAlpha(40),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(100), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Theme.of(context).colorScheme.primary.withAlpha(60),
+                                  blurRadius: 15,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Iconsax.add_circle,
+                              size: 32,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
                       ),
@@ -1136,81 +1271,280 @@ class _AddPlaylistTile extends ConsumerWidget {
   }
 }
 
-void _showAddPlaylistDialog(BuildContext context, WidgetRef ref) {
-  final controller = TextEditingController();
+void _showPlaylistOptions(BuildContext context, WidgetRef ref, ZmrPlaylist playlist) {
   showModalBottomSheet(
+    context: rootNavigatorKey.currentContext ?? context,
     useRootNavigator: true,
-    context: context,
+    backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-    ),
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        left: 24, right: 24, top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+    builder: (ctx) => Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'New Playlist',
-            style: GoogleFonts.outfit(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 24),
-          TextField(
-            controller: controller,
-            autofocus: true,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-            decoration: InputDecoration(
-              hintText: 'Playlist Name',
-              hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(150),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
-              ),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(30),
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(150))),
-                ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: playlist.thumbnailUrl.startsWith('assets/')
+                    ? Image.asset(playlist.thumbnailUrl, width: 60, height: 60, fit: BoxFit.cover)
+                    : Image.network(playlist.thumbnailUrl, width: 60, height: 60, fit: BoxFit.cover),
               ),
               const SizedBox(width: 16),
               Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      playlist.title,
+                      style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${playlist.songCount} songs',
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          ListTile(
+            leading: const Icon(Iconsax.shuffle),
+            title: const Text('Shuffle All'),
+            onTap: () async {
+              Navigator.pop(ctx);
+              final ytService = ref.read(youtubeServiceProvider);
+              final songs = await ytService.fetchPlaylistSongs(playlist.id);
+              if (songs.isNotEmpty) {
+                final mutableSongs = List<Song>.from(songs);
+                mutableSongs.shuffle();
+                ref.read(playbackProvider.notifier).setQueue(mutableSongs, initialIndex: 0);
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Iconsax.edit),
+            title: const Text('Rename Playlist'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _showRenamePlaylistDialog(context, ref, playlist);
+            },
+          ),
+          ListTile(
+            leading: Icon(Iconsax.trash, color: Theme.of(context).colorScheme.error),
+            title: Text('Delete Playlist', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _showDeletePlaylistConfirmation(context, ref, playlist);
+            },
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    ),
+  );
+}
+
+void _showRenamePlaylistDialog(BuildContext context, WidgetRef ref, ZmrPlaylist playlist) {
+  final controller = TextEditingController(text: playlist.title);
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Rename Playlist'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(hintText: 'New playlist name'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () async {
+            final newTitle = controller.text.trim();
+            if (newTitle.isNotEmpty && newTitle != playlist.title) {
+              Navigator.pop(ctx);
+              await ref.read(userPlaylistsProvider.notifier).renamePlaylist(playlist.id, newTitle);
+            }
+          },
+          child: const Text('Rename'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showDeletePlaylistConfirmation(BuildContext context, WidgetRef ref, ZmrPlaylist playlist) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete Playlist'),
+      content: Text('Are you sure you want to delete "${playlist.title}"? This action cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await ref.read(userPlaylistsProvider.notifier).deletePlaylist(playlist.id);
+          },
+          style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showAddPlaylistDialog(BuildContext context, WidgetRef ref) {
+
+  final controller = TextEditingController();
+  final isLoading = ValueNotifier<bool>(false);
+
+  showModalBottomSheet(
+    context: rootNavigatorKey.currentContext ?? context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: Theme.of(context).colorScheme.onSurface.withAlpha(20), width: 1),
+        ),
+        padding: EdgeInsets.only(
+          left: 24, right: 24, top: 12,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(50),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withAlpha(30),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Iconsax.music_playlist, color: Theme.of(context).colorScheme.primary, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                  'Create Playlist',
+                  style: GoogleFonts.outfit(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'What should we call your playlist?',
+                hintStyle: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(150),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                prefixIcon: Icon(Iconsax.edit, color: Theme.of(context).colorScheme.onSurface.withAlpha(150), size: 20),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            ValueListenableBuilder<bool>(
+              valueListenable: isLoading,
+              builder: (context, loading, _) => SizedBox(
+                width: double.infinity,
+                height: 56,
                 child: ElevatedButton(
-                  onPressed: () async {
+                  onPressed: loading ? null : () async {
                     final title = controller.text.trim();
                     if (title.isNotEmpty) {
-                      await ref.read(supabaseServiceProvider).createPlaylist(title);
-                      Navigator.pop(context);
-                      ref.invalidate(userPlaylistsProvider);
+                      isLoading.value = true;
+                      try {
+                        await ref.read(youtubeServiceProvider).createPlaylist(title);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ZmrSnackbar.show(context, 'Playlist "$title" created successfully!');
+                        }
+                        ref.invalidate(userPlaylistsProvider);
+                      } catch (e) {
+                         if (context.mounted) {
+                           ZmrSnackbar.show(context, 'Error creating playlist: $e');
+                         }
+                      } finally {
+                        isLoading.value = false;
+                      }
                     }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    shadowColor: Theme.of(context).colorScheme.primary.withAlpha(100),
                   ),
-                  child: const Text('Create'),
+                  child: loading 
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                    : Text(
+                        'Create Playlist', 
+                        style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      ),
                 ),
               ),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Maybe Later', 
+                  style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(150)),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -1277,167 +1611,9 @@ class _SongCard extends ConsumerWidget {
 }
 
 
-class _DownloadSettingsTile extends ConsumerWidget {
-  const _DownloadSettingsTile();
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final location = ref.watch(downloadLocationProvider);
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        leading: Icon(
-          location == 'drive' ? Iconsax.cloud_plus : Iconsax.folder_2,
-          color: Theme.of(context).colorScheme.onSurface,
-          size: 28,
-        ),
-        title: Text(
-          'Download Location',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          location == 'drive' ? 'Google Drive' : 'Local Device Storage',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 13),
-        ),
-        trailing: Icon(Iconsax.arrow_right_3, color: Theme.of(context).colorScheme.onSurface.withAlpha(128)),
-        onTap: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            ),
-            builder: (ctx) => const _DownloadLocationPicker(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _DownloadLocationPicker extends ConsumerWidget {
-  const _DownloadLocationPicker();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final location = ref.watch(downloadLocationProvider);
-    
-    return SingleChildScrollView(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 24.0,
-          right: 24.0,
-          top: 24.0,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24.0,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            Text(
-              'Save offline music to',
-              style: GoogleFonts.outfit(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 24),
-            RadioListTile<String>(
-              title: Text('Local Device Storage', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500)),
-              subtitle: Text('Fast, offline playback directly from your phone.', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(150), fontSize: 13)),
-              activeColor: Theme.of(context).colorScheme.primary,
-              value: 'local',
-              groupValue: location,
-              onChanged: (val) {
-                if (val != null) {
-                  ref.read(downloadLocationProvider.notifier).setLocation(val);
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-            RadioListTile<String>(
-              title: Text('Google Drive', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500)),
-              subtitle: Text('Sync seamlessly to your cloud storage.', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(150), fontSize: 13)),
-              activeColor: Theme.of(context).colorScheme.primary,
-              value: 'drive',
-              groupValue: location,
-              onChanged: (val) {
-                if (val != null) {
-                  ref.read(downloadLocationProvider.notifier).setLocation(val);
-                }
-              },
-            ),
-            if (location == 'drive') ...[
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Target Folder Link (Optional)',
-                      style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 12),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (val) {
-                        // Extract Folder ID from link
-                        // Format: https://drive.google.com/drive/folders/FOLDER_ID
-                        String folderId = val.trim();
-                        if (folderId.contains('folders/')) {
-                          folderId = folderId.split('folders/').last.split('?').first;
-                        } else if (folderId.contains('id=')) {
-                          folderId = folderId.split('id=').last.split('&').first;
-                        }
-                        ref.read(driveFolderProvider.notifier).setFolderId(folderId);
-                      },
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'Paste Drive folder link...',
-                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(80)),
-                        filled: true,
-                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(150),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Ensure the authorized account has permission to upload here.',
-                      style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(100), fontSize: 10),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            Center(
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Done', style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DownloadActivityTile extends ConsumerWidget {
-  const _DownloadActivityTile();
+class _CookieSettingsTile extends ConsumerWidget {
+  const _CookieSettingsTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1450,128 +1626,35 @@ class _DownloadActivityTile extends ConsumerWidget {
       child: ListTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        leading: Icon(Iconsax.activity, color: Theme.of(context).colorScheme.onSurface, size: 28),
-        title: Text(
-          'Download Activity',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          'View real-time progress & logs',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 13),
-        ),
-        trailing: Icon(Iconsax.arrow_right_3, color: Theme.of(context).colorScheme.onSurface.withAlpha(128)),
-        onTap: () {
-          showModalBottomSheet(
-            useRootNavigator: true,
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            ),
-            builder: (ctx) => const _DownloadActivityViewer(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _DownloadActivityViewer extends ConsumerWidget {
-  const _DownloadActivityViewer();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(downloadLogsProvider);
-    
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withAlpha(50),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Download Activity',
-                style: GoogleFonts.outfit(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (state.progress.isNotEmpty) ...[
-                Text(
-                  'Active Transfers',
-                  style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
-                ),
-                const SizedBox(height: 12),
-                ...state.progress.entries.map((e) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Song ID: ${e.key}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: e.value,
-                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
-                            minHeight: 6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-                const Divider(height: 32),
-              ],
-              Text(
-                'Event Logs',
-                style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: state.logs.length,
-                  itemBuilder: (context, index) {
-                    final log = state.logs[state.logs.length - 1 - index]; // Show newest first
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Text(
-                        '[$index] $log',
-                        style: GoogleFonts.firaCode(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 11),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withAlpha(30),
+            shape: BoxShape.circle,
           ),
-        );
-      },
+          child: Icon(
+            Iconsax.setting_2,
+            color: Theme.of(context).colorScheme.primary,
+            size: 28,
+          ),
+        ),
+        title: Text(
+          'YouTube Music Cookies',
+          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          'Manage your authentication tokens',
+          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 13),
+        ),
+        trailing: Icon(Iconsax.arrow_right_3, color: Theme.of(context).colorScheme.onSurface.withAlpha(128)),
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
+        },
+      ),
     );
   }
 }
+
 
 class _ArtistCard extends StatelessWidget {
   final Artist artist;
@@ -1579,32 +1662,37 @@ class _ArtistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 16),
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 65,
-            backgroundImage: artist.thumbnailUrl.startsWith('http') 
-                ? NetworkImage(artist.thumbnailUrl) 
-                : null,
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: !artist.thumbnailUrl.startsWith('http') 
-                ? Icon(Iconsax.user, color: Theme.of(context).colorScheme.onSurface.withAlpha(150)) 
-                : null,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            artist.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-        ],
-      ),
-    ).animate().scale(begin: const Offset(0.95, 0.95), duration: 400.ms, curve: Curves.easeOutBack).fade();
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistPage(artist: artist)));
+      },
+      child: Container(
+        width: 140,
+        margin: const EdgeInsets.only(right: 16),
+        child: Column(
+          children: [
+            CircleAvatar(
+              radius: 65,
+              backgroundImage: artist.thumbnailUrl.startsWith('http') 
+                  ? NetworkImage(artist.thumbnailUrl) 
+                  : null,
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: !artist.thumbnailUrl.startsWith('http') 
+                  ? Icon(Iconsax.user, color: Theme.of(context).colorScheme.onSurface.withAlpha(150)) 
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              artist.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+      ).animate().scale(begin: const Offset(0.95, 0.95), duration: 400.ms, curve: Curves.easeOutBack).fade(),
+    );
   }
 }
 

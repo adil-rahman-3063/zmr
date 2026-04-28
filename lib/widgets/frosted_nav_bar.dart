@@ -53,8 +53,11 @@ class FrostedNavBar extends ConsumerWidget {
                         selected: selected,
                         onTap: (index) {
                           ref.read(bottomNavProvider.notifier).setIndex(index);
-                          if (Navigator.canPop(context)) {
-                            Navigator.popUntil(context, (route) => route.isFirst);
+                          
+                          // Handle root navigator popping for pages pushed onto the main stack (like PlaylistPage)
+                          final navKey = ref.read(navigatorKeyProvider);
+                          if (navKey.currentState?.canPop() ?? false) {
+                            navKey.currentState?.popUntil((route) => route.isFirst);
                           }
                         },
                       );

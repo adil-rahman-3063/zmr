@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import '../core/youtube_config.dart';
 
 /// Comprehensive InnerTube Client ported from Metrolist.
 /// This class handles the raw communication with YouTube Music's private API.
@@ -57,7 +55,7 @@ class InnerTubeClient {
     return 'SAPISIDHASH ${timestamp}_$hash';
   }
 
-  Map<String, String> _getHeaders({bool requireAuth = false}) {
+  Map<String, String> _getHeaders() {
     final headers = {
       'Content-Type': 'application/json',
       'User-Agent': userAgent,
@@ -101,16 +99,28 @@ class InnerTubeClient {
     };
   }
 
-  Future<Response> post(String endpoint, Map<String, dynamic> body, {String? key, bool setLogin = false}) async {
+  Future<Response> post(String endpoint, Map<String, dynamic> body, {String? key, bool setLogin = false, String? client}) async {
     final url = '$apiBase/$endpoint?key=${key ?? defaultKey}';
     final requestBody = _getContext(setLogin: setLogin);
+    
+    if (client != null) {
+      requestBody['context']['client']['clientName'] = client;
+      if (client == 'ANDROID') {
+        requestBody['context']['client']['clientVersion'] = '19.04.35';
+      }
+    }
+    
     requestBody.addAll(body);
+
+    final String ua = client == 'ANDROID' 
+        ? 'com.google.android.apps.youtube.music/19.04.35 (Linux; U; Android 14; en_US; SM-S918B; Build/UP1A.231005.007; HW-SN)' 
+        : userAgent;
 
     try {
       final response = await _dio.post(
         url,
         data: jsonEncode(requestBody),
-        options: Options(headers: _getHeaders()),
+        options: Options(headers: _getHeaders()..['User-Agent'] = ua),
       );
       return response;
     } on DioException catch (e) {
@@ -124,7 +134,7 @@ class InnerTubeClient {
   // --- Endpoints Implementation ---
 
   /// Fetch Homepage, Playlists, Artists, Albums
-  Future<Response> browse({String? browseId, String? params, String? continuation, bool setLogin = false}) {
+  Future<Response> browse({String? browseId, String? params, String? continuation, bool setLogin = false, String? client}) {
     return post('browse', {
       if (continuation != null)
         'continuation': continuation
@@ -132,7 +142,7 @@ class InnerTubeClient {
         if (browseId != null) 'browseId': browseId,
         if (params != null) 'params': params,
       }
-    }, setLogin: setLogin);
+    }, setLogin: setLogin, client: client);
   }
 
   /// Global Search
@@ -168,13 +178,15 @@ class InnerTubeClient {
     String? playlistId,
     String? params,
     String? continuation,
+    bool setLogin = false,
+    String? client,
   }) {
     return post('next', {
       if (videoId != null) 'videoId': videoId,
       if (playlistId != null) 'playlistId': playlistId,
       if (params != null) 'params': params,
       if (continuation != null) 'continuation': continuation,
-    });
+    }, setLogin: setLogin, client: client);
   }
 
   /// Liking/Disliking

@@ -8,6 +8,8 @@ import '../models/artist_model.dart';
 import '../models/search_response.dart';
 import '../core/youtube_config.dart';
 import '../models/home_section.dart';
+import '../models/lyrics_model.dart';
+import '../models/artist_details.dart';
 import 'youtube_extractor_service.dart';
 import 'innertube_client.dart';
 
@@ -46,7 +48,7 @@ class YoutubeService {
   static const String _tokenKey = 'zmr_tokens';
   String? _cookies;
 
-  /// Fetches fresh tokens from the Railway backend if not already available.
+  /// Fetches fresh tokens from the Cloudflare backend if not already available.
   /// If [forceRefresh] is true, it will fetch from the server regardless of cache.
   Future<TokenPair> getValidTokens({bool forceRefresh = false}) async {
     if (_tokens != null && !forceRefresh) {
@@ -75,7 +77,7 @@ class YoutubeService {
     return freshTokens;
   }
 
-  /// Fetches fresh tokens from the Railway backend and saves them to cache.
+  /// Fetches fresh tokens from the Cloudflare backend and saves them to cache.
   Future<TokenPair> fetchTokens() async {
     try {
       debugPrint('ZMR [TOKENS]: Fetching from ${YoutubeConfig.tokenProviderUrl}...');
@@ -374,7 +376,7 @@ class YoutubeService {
     final List<Song> allSongs = [];
     try {
       await getValidTokens(forceRefresh: isRetry);
-      var response = await _innerTube.browse(browseId: "FEmusic_liked_videos", setLogin: true);
+      var response = await _innerTube.browse(browseId: "VLLM", setLogin: true);
 
       if (response.statusCode == 200) {
         allSongs.addAll(_parseBrowseSongs(response.data));
@@ -442,7 +444,7 @@ class YoutubeService {
       
       String actualBrowseId = playlistId;
       if (playlistId == 'LM' || playlistId == 'FEmusic_liked_songs') {
-        actualBrowseId = 'FEmusic_liked_videos';
+        actualBrowseId = 'VLLM';
       } else if (playlistId.startsWith('PL')) {
         actualBrowseId = 'VL$playlistId';
       }
@@ -451,15 +453,22 @@ class YoutubeService {
       var response = await _innerTube.browse(browseId: actualBrowseId, setLogin: true);
       
       if (response.statusCode == 200) {
-        allSongs.addAll(_parseBrowseSongs(response.data));
+        // 1. Identify the primary playlist shelf to avoid "Suggestions"
+        final playlistShelf = _findAllElements(response.data, 'musicPlaylistShelfRenderer').firstOrNull;
+        final container = playlistShelf ?? response.data;
+
+        final initialSongs = _parseBrowseSongs(container);
+        allSongs.addAll(initialSongs);
         
-        String? continuation = _extractContinuation(response.data);
+        // 2. ONLY extract continuation from the playlist shelf itself
+        String? continuation = _extractContinuation(container);
         debugPrint('ZMR [PL]: Initial batch fetched ${allSongs.length} songs. Continuation: ${continuation != null}');
         
         while (continuation != null && allSongs.length < 5000) {
           debugPrint('ZMR [PL]: Fetching continuation (current total: ${allSongs.length})...');
           response = await _innerTube.browse(continuation: continuation, setLogin: true);
           if (response.statusCode == 200) {
+            // Continuations usually return a continuationItemListRenderer or similar
             final nextSongs = _parseBrowseSongs(response.data);
             if (nextSongs.isEmpty) {
               debugPrint('ZMR [PL]: Continuation returned no songs. Stopping.');
@@ -770,6 +779,116 @@ class YoutubeService {
     await _innerTube.unsubscribe(channelId);
   }
 
+  Future<List<Artist>> fetchSubscribedArtists({bool isRetry = false}) async {
+    if (_cookies == null) return [];
+    try {
+      await getValidTokens(forceRefresh: isRetry);
+      final responses = await Future.wait([
+        _innerTube.browse(browseId: "FEmusic_library_corpus_track_artists", setLogin: true),
+        _innerTube.browse(browseId: "FEmusic_library_corpus_artists", setLogin: true)
+      ]);
+
+      final List<Artist> allArtists = [];
+
+      for (var response in responses) {
+        if (response.statusCode == 200) {
+          final items = _findAllElements(response.data, 'musicResponsiveListItemRenderer');
+          for (var item in items) {
+            final allBrowseIds = _findAllElements(item, 'browseId');
+            if (allBrowseIds.isEmpty) continue;
+            final id = allBrowseIds.first.toString();
+            if (!id.startsWith('UC')) continue; // Ensure it's an artist channel
+            
+            String name = 'Unknown Artist';
+            if (item.containsKey('flexColumns')) {
+              final flexCols = item['flexColumns'] as List?;
+              if (flexCols != null && flexCols.isNotEmpty) {
+                name = _getText(flexCols[0]);
+              }
+            } else {
+              name = _getText(item['title']); // fallback
+            }
+            final thumbnails = _getThumbnails(item);
+            final thumbUrl = thumbnails.isNotEmpty ? thumbnails.last : '';
+            
+            if (!allArtists.any((a) => a.id == id)) {
+              allArtists.add(Artist(id: id, name: name, thumbnailUrl: thumbUrl));
+            }
+          }
+        }
+      }
+      return allArtists;
+    } catch (e) {
+      if (!isRetry) return fetchSubscribedArtists(isRetry: true);
+    }
+    return [];
+  }
+
+  Future<ArtistDetails> fetchArtistDetails(String artistId) async {
+    final List<Song> popularSongs = [];
+    final List<ArtistSection> sections = [];
+    
+    try {
+      await getValidTokens();
+      final response = await _innerTube.browse(browseId: artistId);
+      if (response.statusCode == 200) {
+        final data = response.data;
+        
+        // 1. Find Popular Songs (usually in a musicShelfRenderer)
+        final shelves = _findAllElements(data, 'musicShelfRenderer');
+        for (var shelf in shelves) {
+          final title = _getText(shelf['title']);
+          if (title.toLowerCase().contains('song')) {
+            popularSongs.addAll(_parseBrowseSongs(shelf));
+            break; 
+          }
+        }
+        
+        // 2. Find Other Sections (Albums, Singles, etc.)
+        final carousels = _findAllElements(data, 'musicCarouselShelfRenderer');
+        for (var carousel in carousels) {
+          final title = _getText(carousel['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']);
+          final items = _parseBrowseSongs(carousel);
+          if (items.isNotEmpty) {
+            sections.add(ArtistSection(title: title, items: items));
+          }
+        }
+        
+        // Fallback if popularSongs is empty
+        if (popularSongs.isEmpty && sections.isNotEmpty) {
+          popularSongs.addAll(sections.first.items);
+        }
+      }
+    } catch (e) {
+      debugPrint('ZMR [ArtistDetails] error: $e');
+    }
+    
+    return ArtistDetails(popularSongs: popularSongs, sections: sections);
+  }
+
+  Future<List<Song>> fetchArtistNewReleases(String artistId) async {
+
+    try {
+      await getValidTokens();
+      final response = await _innerTube.browse(browseId: artistId);
+      if (response.statusCode == 200) {
+        // Find New Releases carousel or just first songs section
+        final carousels = _findAllElements(response.data, 'musicCarouselShelfRenderer');
+        for (var carousel in carousels) {
+          final headerText = _getText(carousel['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']);
+          if (headerText.toLowerCase().contains('release') || headerText.toLowerCase().contains('album') || headerText.toLowerCase().contains('song')) {
+            return _parseBrowseSongs(carousel);
+          }
+        }
+        // Fallback to all parsed songs if no explicit section
+        return _parseBrowseSongs(response.data).take(10).toList();
+      }
+    } catch (e) {
+      debugPrint('ZMR [Artist] error: $e');
+    }
+    return [];
+  }
+
   Future<void> removeFromPlaylist(String playlistId, String videoId, String setVideoId) async {
     await getValidTokens();
     await _innerTube.editPlaylist(playlistId, [
@@ -870,12 +989,30 @@ class YoutubeService {
         _cookies = null;
       }
     } else {
-      _cookies = cookies.replaceAll(RegExp(r'\r?\n'), ' ').trim();
+      // Aggressively remove all whitespace (newlines, tabs, spaces) 
+      // Most YouTube cookies are alphanumeric/symbols and shouldn't contain spaces.
+      // Spaces often appear due to UI word-wrapping or bad copy-pasting.
+      _cookies = cookies.replaceAll(RegExp(r'\s+'), '').trim();
     }
     
     if (_cookies != null && _cookies!.isNotEmpty) {
       _innerTube.updateCookies(_cookies);
-      debugPrint('ZMR AUTH: Cookies Processed. Ready for library discovery.');
+      
+      // Sanitized log for debugging
+      final keys = _cookies!.split(';').map((e) => e.split('=')[0].trim()).join(', ');
+      debugPrint('ZMR AUTH: Cookies Processed. Keys found: $keys');
+    }
+  }
+
+  /// Verifies if the current cookies are valid by attempting to fetch the library.
+  Future<bool> testAuth() async {
+    if (_cookies == null || _cookies!.isEmpty) return false;
+    try {
+      final response = await _innerTube.browse(browseId: 'FEmusic_library_corpus');
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ZMR AUTH: Test failed: $e');
+      return false;
     }
   }
 
@@ -914,14 +1051,12 @@ class YoutubeService {
   /// Adds a song to a playlist
   Future<void> addToPlaylist(String playlistId, String videoId) async {
     try {
-      // Check if song already exists in the playlist
-      final existingSongs = await fetchPlaylistSongs(playlistId);
-      if (existingSongs.any((s) => s.id == videoId)) {
-        throw Exception('ALREADY_EXISTS');
-      }
-
       await getValidTokens();
-      final response = await _innerTube.editPlaylist(playlistId, [
+      
+      // Strip 'VL' prefix for edit actions if present (YTM lists use VL prefix for browse, but not for edits)
+      final cleanPlaylistId = playlistId.startsWith('VL') ? playlistId.substring(2) : playlistId;
+      
+      final response = await _innerTube.editPlaylist(cleanPlaylistId, [
         {
           'action': 'ACTION_ADD_VIDEO',
           'addedVideoId': videoId,
@@ -940,12 +1075,24 @@ class YoutubeService {
   Future<String?> createPlaylist(String title, {String? videoId}) async {
     try {
       await getValidTokens();
-      final response = await _innerTube.createPlaylist(
-        title,
-        videoIds: videoId != null ? [videoId] : null,
-      );
-      if (response.statusCode == 200) {
-        return response.data['playlistId'];
+      // Step 1: Create an EMPTY playlist (Prevents YouTube from auto-filling with suggested tracks)
+      final createResponse = await _innerTube.createPlaylist(title);
+      
+      if (createResponse.statusCode == 200) {
+        final playlistId = createResponse.data['playlistId'];
+        if (playlistId == null) return null;
+
+        // Step 2: Add our specific song manually
+        if (videoId != null) {
+          await _innerTube.editPlaylist(playlistId, [
+            {
+              'action': 'ACTION_ADD_VIDEO',
+              'addedVideoId': videoId,
+            }
+          ]);
+        }
+        
+        return playlistId;
       }
     } catch (e) {
       debugPrint('ZMR [CREATE_PLAYLIST] Error: $e');
@@ -985,5 +1132,160 @@ class YoutubeService {
       debugPrint('ZMR [RENAME_PLAYLIST] Error: $e');
       rethrow;
     }
+  }
+
+  /// Fetches lyrics (timed if available, otherwise static)
+  Future<LyricsData?> fetchLyrics(String videoId, {Song? song}) async {
+    // 1. Try timed lyrics (Transcript) first
+    try {
+      final transcriptResponse = await _innerTube.getTranscript(videoId);
+      if (transcriptResponse.statusCode == 200) {
+        final actions = transcriptResponse.data['actions'];
+        if (actions != null && actions.isNotEmpty) {
+          final content = actions[0]['updateTranscriptAction']?['content'];
+          final body = content?['transcriptRenderer']?['body']?['transcriptBodyRenderer'];
+          final cues = body?['cueGroups'];
+          
+          if (cues != null) {
+            final List<LyricsLine> lines = [];
+            for (var cueGroup in cues) {
+              final cue = cueGroup['transcriptCueGroupRenderer']?['cues']?[0]?['transcriptCueRenderer'];
+              if (cue != null) {
+                final text = _getText(cue['label']);
+                final startMs = int.tryParse(cue['startOffsetMs'] ?? '0') ?? 0;
+                lines.add(LyricsLine(timestamp: Duration(milliseconds: startMs), text: text));
+              }
+            }
+            if (lines.isNotEmpty) {
+              debugPrint('ZMR [LYRICS]: Success with timed lyrics');
+              return LyricsData(lines: lines);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Log timed lyrics failure and continue to fallback
+      debugPrint('ZMR [LYRICS-TIMED] Error (proceeding to fallback): $e');
+    }
+
+    // 2. Fallback to browse-based static lyrics
+    try {
+      final nextResponse = await _innerTube.next(videoId: videoId, setLogin: true);
+      
+      // Attempt to find static lyrics directly in the next response shelf
+      final directStatic = _parseStaticLyrics(nextResponse.data);
+      if (directStatic != null) {
+        debugPrint('ZMR [LYRICS-STATIC]: Found lyrics directly in next response');
+        final lines = directStatic.split('\n').map((l) => LyricsLine(timestamp: Duration.zero, text: l)).toList();
+        return LyricsData(lines: lines, source: 'YouTube Music');
+      }
+
+      String? browseId = _findLyricsBrowseId(nextResponse.data);
+      
+      // Deep fallback: search for anything starting with FEmusic_lyrics if tab search failed
+      if (browseId == null) {
+        final allLyricsIds = _findAllBrowseIds(nextResponse.data, 'FEmusic_lyrics');
+        if (allLyricsIds.isNotEmpty) {
+          browseId = allLyricsIds.first;
+          debugPrint('ZMR [LYRICS-STATIC]: Found browseId via deep search: $browseId');
+        }
+      }
+
+      if (browseId != null) {
+        final lyricsBrowse = await _innerTube.browse(browseId: browseId, setLogin: true);
+        final lyricsText = _parseStaticLyrics(lyricsBrowse.data);
+        if (lyricsText != null) {
+          final lines = lyricsText.split('\n').map((l) => LyricsLine(timestamp: Duration.zero, text: l)).toList();
+          debugPrint('ZMR [LYRICS]: Success with static lyrics');
+          return LyricsData(lines: lines, source: 'YouTube Music');
+        }
+      } 
+      
+      // ULTRA Fallback: search for any text block with many newlines in it (likely lyrics)
+      final allFuzzyStrings = _findAllStrings(nextResponse.data, (s) => s.contains('\n') && s.length > 200);
+      if (allFuzzyStrings.isNotEmpty) {
+          debugPrint('ZMR [LYRICS-FUZZY]: Found text block via heuristic');
+          final lines = allFuzzyStrings.first.split('\n').map((l) => LyricsLine(timestamp: Duration.zero, text: l)).toList();
+          return LyricsData(lines: lines, source: 'YouTube Music (Auto)');
+      }
+
+      // NUCLEAR FALLBACK: Search for lyrics explicitly
+      final songTitle = song?.title;
+      final songArtist = song?.artist;
+      if (songTitle != null || songArtist != null) {
+          debugPrint('ZMR [LYRICS-SEARCH]: Direct lookups failed, searching for lyrics...');
+          final query = '${songTitle ?? ""} ${songArtist ?? ""} lyrics'.trim();
+          final searchResult = await _innerTube.search(query: query, params: 'EgWKAQIIAWoKEAkQAxAEEAkQBQ%3D%3D'); // Filter for songs
+          final searchSongs = _parseBrowseSongs(searchResult.data);
+          if (searchSongs.isNotEmpty) {
+              final topLyricSong = searchSongs.first;
+              debugPrint('ZMR [LYRICS-SEARCH]: Found potential lyric source: ${topLyricSong.id}');
+              final searchNext = await _innerTube.next(videoId: topLyricSong.id, setLogin: true);
+              final searchStatic = _parseStaticLyrics(searchNext.data);
+              if (searchStatic != null) {
+                  final lines = searchStatic.split('\n').map((l) => LyricsLine(timestamp: Duration.zero, text: l)).toList();
+                  return LyricsData(lines: lines, source: 'YouTube Music (Search)');
+              }
+          }
+      }
+
+      debugPrint('ZMR [LYRICS-STATIC]: No source found even after search fallback');
+    } catch (e) {
+      debugPrint('ZMR [LYRICS-STATIC] Error: $e');
+    }
+    
+    return null;
+  }
+
+  String? _findLyricsBrowseId(dynamic nextData) {
+    try {
+      // Look for the tabbed renderer which contains "Lyrics"
+      final tabs = _findAllElements(nextData, 'tabRenderer');
+      for (var tab in tabs) {
+        final title = _getText(tab['title']);
+        if (title.toLowerCase() == 'lyrics') {
+          return tab['endpoint']?['browseEndpoint']?['browseId'];
+        }
+      }
+    } catch (e) {
+      debugPrint('ZMR [LYRICS-FIND] Error: $e');
+    }
+    return null;
+  }
+
+  String? _parseStaticLyrics(dynamic browseData) {
+    try {
+      // Look for any description shelf containing the lyrics text
+      final shelves = _findAllElements(browseData, 'musicDescriptionShelfRenderer');
+      for (var shelf in shelves) {
+        final text = _getText(shelf['description']);
+        if (text.isNotEmpty) return text;
+      }
+      
+    } catch (_) {}
+    return null;
+  }
+
+  /// Deep search for any string that matches a predicate
+  List<String> _findAllStrings(dynamic data, bool Function(String) predicate) {
+    Set<String> results = {};
+    void search(dynamic node) {
+      if (node is String) {
+        if (predicate(node)) results.add(node);
+      } else if (node is List) {
+        for (var e in node) {
+          search(e);
+        }
+      } else if (node is Map) {
+        node.values.forEach(search);
+      }
+    }
+    search(data);
+    return results.toList();
+  }
+
+  /// Deep search for any string that looks like a specific browseId prefix
+  List<String> _findAllBrowseIds(dynamic data, String prefix) {
+    return _findAllStrings(data, (s) => s.startsWith(prefix));
   }
 }

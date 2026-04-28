@@ -4,15 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../main.dart';
+import '../services/audio_handler.dart';
 import 'dart:math';
 import '../models/song_model.dart';
 import '../models/playlist_model.dart';
 import '../models/home_section.dart';
 import '../models/search_response.dart';
+import '../models/lyrics_model.dart';
+import '../models/artist_model.dart';
+import '../models/artist_details.dart';
 import '../services/youtube_service.dart';
-import '../services/supabase_service.dart';
-import '../services/download_service.dart';
+
 
 // Provider for managing global bottom navigation index
 class BottomNavNotifier extends Notifier<int> {
@@ -70,44 +75,6 @@ class YoutubeCookieNotifier extends Notifier<String?> {
 
 final youtubeCookieProvider = NotifierProvider<YoutubeCookieNotifier, String?>(YoutubeCookieNotifier.new);
 
-class DownloadLocationNotifier extends Notifier<String> {
-  static const _key = 'zmr_download_location';
-
-  @override
-  String build() {
-    final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getString(_key) ?? 'local';
-  }
-
-  void setLocation(String location) {
-    state = location;
-    ref.read(sharedPreferencesProvider).setString(_key, location);
-  }
-}
-
-final downloadLocationProvider = NotifierProvider<DownloadLocationNotifier, String>(DownloadLocationNotifier.new);
-
-class DriveFolderNotifier extends Notifier<String?> {
-  static const _key = 'zmr_drive_folder_id';
-
-  @override
-  String? build() {
-    final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getString(_key);
-  }
-
-  void setFolderId(String? folderId) {
-    state = folderId;
-    final prefs = ref.read(sharedPreferencesProvider);
-    if (folderId == null) {
-      prefs.remove(_key);
-    } else {
-      prefs.setString(_key, folderId);
-    }
-  }
-}
-
-final driveFolderProvider = NotifierProvider<DriveFolderNotifier, String?>(DriveFolderNotifier.new);
 
 // User onboarding: Track if swipe-up hint was shown
 class SwipeHintNotifier extends Notifier<bool> {
@@ -126,6 +93,24 @@ class SwipeHintNotifier extends Notifier<bool> {
 }
 
 final swipeHintShownProvider = NotifierProvider<SwipeHintNotifier, bool>(SwipeHintNotifier.new);
+
+// Cookie onboarding: Track if cookie dialog was shown to new users
+class CookieOnboardingNotifier extends Notifier<bool> {
+  static const _key = 'zmr_cookie_onboarding_shown';
+
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(_key) ?? false;
+  }
+
+  void markAsShown() {
+    state = true;
+    ref.read(sharedPreferencesProvider).setBool(_key, true);
+  }
+}
+
+final cookieOnboardingProvider = NotifierProvider<CookieOnboardingNotifier, bool>(CookieOnboardingNotifier.new);
 
 // Dynamic Color Scheme provider based on current song thumbnail
 final dynamicColorSchemeProvider = FutureProvider<ColorScheme?>((ref) async {
@@ -154,58 +139,16 @@ final youtubeServiceProvider = Provider((ref) {
   return ytService;
 });
 
-final supabaseServiceProvider = Provider((ref) => SupabaseService());
 
-final downloadServiceProvider = Provider((ref) {
-  final service = DownloadService(ref.watch(youtubeServiceProvider));
-  
-  // Link the service to the logging provider
-  service.onLog = (msg) => ref.read(downloadLogsProvider.notifier).addLog(msg);
-  service.onProgressUpdate = (id, progress) => ref.read(downloadLogsProvider.notifier).updateProgress(id, progress);
-  
-  return service;
+
+
+final musicPlayerProvider = Provider<AudioPlayer>((ref) {
+  // Use the player instance managed by our ZmrAudioHandler for background support
+  return (zmrAudioHandler as ZmrAudioHandler).internalPlayer;
 });
 
-class DownloadLogState {
-  final List<String> logs;
-  final Map<String, double> progress;
-  DownloadLogState({required this.logs, required this.progress});
-}
-
-class DownloadLogNotifier extends Notifier<DownloadLogState> {
-  @override
-  DownloadLogState build() => DownloadLogState(logs: [], progress: {});
-
-  void addLog(String message) {
-    state = DownloadLogState(
-      logs: [...state.logs, message],
-      progress: state.progress,
-    );
-  }
-
-  void updateProgress(String id, double p) {
-    final nextProgress = Map<String, double>.from(state.progress);
-    nextProgress[id] = p;
-    state = DownloadLogState(logs: state.logs, progress: nextProgress);
-  }
-}
-
-final downloadLogsProvider = NotifierProvider<DownloadLogNotifier, DownloadLogState>(DownloadLogNotifier.new);
-
-final musicPlayerProvider = Provider((ref) {
-  final player = AudioPlayer(
-    userAgent: "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
-  );
-  
-  // High-level listener for diagnostics
-  player.playbackEventStream.listen((event) {
-    // Slient in production/dev for less terminal noise
-  }, onError: (Object e, StackTrace st) {
-    debugPrint('ZMR CRITICAL PLAYER ERROR: $e');
-    debugPrint('ZMR STACKTRACE: $st');
-  });
-
-  return player;
+final audioHandlerProvider = Provider<AudioHandler>((ref) {
+  return zmrAudioHandler;
 });
 
 final playerProcessingStateProvider = StreamProvider<ProcessingState>((ref) {
@@ -284,6 +227,11 @@ class PlaybackState {
 class PlaybackNotifier extends Notifier<PlaybackState> {
   @override
   PlaybackState build() {
+    // Connect audio handler callbacks to this notifier's methods
+    final handler = zmrAudioHandler as ZmrAudioHandler;
+    handler.onNext = () => next();
+    handler.onPrevious = () => previous();
+    
     return PlaybackState(queue: [], playlistOrder: [], currentIndex: -1, isFetchingMore: false, originPlaylistId: null);
   }
 
@@ -361,6 +309,26 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       debugPrint('ZMR [START-RADIO]: Discovery finished. Resetting isFetchingMore.');
       state = state.copyWith(isFetchingMore: false);
     }
+  }
+
+  /// Plays a list of songs (playlist), optionally shuffled
+  Future<void> playPlaylist(List<Song> songs, {bool shuffle = false, String? playlistId}) async {
+    if (songs.isEmpty) return;
+    
+    List<int> order = List.generate(songs.length, (i) => i);
+    if (shuffle) {
+      order.shuffle();
+    }
+    
+    state = state.copyWith(
+      queue: songs,
+      playlistOrder: order,
+      currentIndex: 0,
+      isShuffle: shuffle,
+      originPlaylistId: playlistId,
+    );
+    
+    await _playCurrent();
   }
 
   Future<void> setQueue(List<Song> songs, {int initialIndex = 0, String? playlistId}) async {
@@ -462,17 +430,28 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
   }
 
   void toggleRepeat() {
-    if (state.isRepeatOne) state = state.copyWith(isRepeat: false, isRepeatOne: false);
-    else if (state.isRepeat) state = state.copyWith(isRepeat: true, isRepeatOne: true);
-    else state = state.copyWith(isRepeat: true, isRepeatOne: false);
+    final player = ref.read(musicPlayerProvider);
+    if (state.isRepeatOne) {
+      state = state.copyWith(isRepeat: false, isRepeatOne: false);
+      player.setLoopMode(LoopMode.off);
+    } else if (state.isRepeat) {
+      state = state.copyWith(isRepeat: true, isRepeatOne: true);
+      player.setLoopMode(LoopMode.one);
+    } else {
+      state = state.copyWith(isRepeat: true, isRepeatOne: false);
+      player.setLoopMode(LoopMode.off);
+    }
   }
 
   Future<void> next() async {
     if (state.queue.isEmpty) return;
     int nextIndex = state.currentIndex + 1;
     if (nextIndex >= state.playlistOrder.length) {
-      if (state.isRepeat) nextIndex = 0;
-      else return;
+      if (state.isRepeat) {
+        nextIndex = 0;
+      } else {
+        return;
+      }
     }
     state = state.copyWith(currentIndex: nextIndex);
     await _playCurrent();
@@ -482,8 +461,11 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     if (state.queue.isEmpty) return;
     int prevIndex = state.currentIndex - 1;
     if (prevIndex < 0) {
-      if (state.isRepeat) prevIndex = state.playlistOrder.length - 1;
-      else prevIndex = 0;
+      if (state.isRepeat) {
+        prevIndex = state.playlistOrder.length - 1;
+      } else {
+        prevIndex = 0;
+      }
     }
     state = state.copyWith(currentIndex: prevIndex);
     await _playCurrent();
@@ -502,25 +484,31 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     if (song == null) return;
     final player = ref.read(musicPlayerProvider);
     final ytService = ref.read(youtubeServiceProvider);
-    final dbService = ref.read(supabaseServiceProvider);
+
     try {
-      await player.stop();
+      // 1. IMMEDIATELY update metadata so the notification stays visible with the new song info
+      (zmrAudioHandler as ZmrAudioHandler).updateMetadata(
+        MediaItem(
+          id: song.id,
+          album: 'YouTube Music',
+          title: song.title,
+          artist: song.artist,
+          duration: _parseDuration(song.duration),
+          artUri: Uri.parse(song.thumbnailUrl),
+        ),
+      );
+
+      // 2. Fetch URL in the background while keeping the player alive
+      final playUrl = await ytService.getDirectStreamUrl(song.id);
+      
+      // 3. Configure session and switch URL
       final session = await AudioSession.instance;
       await session.configure(AudioSessionConfiguration.music());
       await session.setActive(true);
-      String playUrl = '';
-      final isOffline = await dbService.isSongSavedOffline(song.id);
-      if (isOffline) {
-        final user = dbService.client.auth.currentUser;
-        if (user != null) {
-          final res = await dbService.client.from('user_songs').select('local_path').eq('user_id', user.id).eq('yt_id', song.id).maybeSingle();
-          if (res != null && res['local_path'] != null) playUrl = res['local_path'] as String;
-        }
-      }
-      if (playUrl.isEmpty) playUrl = await ytService.getDirectStreamUrl(song.id);
+
       player.setVolume(1.0);
-      if (playUrl.startsWith('http')) await player.setUrl(playUrl);
-      else await player.setFilePath(playUrl);
+      await player.setUrl(playUrl);
+      await player.setLoopMode(state.isRepeatOne ? LoopMode.one : LoopMode.off);
       await player.play(); 
 
       // If we are getting near the end of the current queue, fetch related songs
@@ -589,6 +577,28 @@ class HomeFeedNotifier extends AsyncNotifier<List<HomeSection>> {
   }
 }
 
+// Followed Artists Provider
+final followedArtistsProvider = AsyncNotifierProvider<FollowedArtistsNotifier, List<Artist>>(FollowedArtistsNotifier.new);
+
+class FollowedArtistsNotifier extends AsyncNotifier<List<Artist>> {
+  @override
+  Future<List<Artist>> build() async {
+    final ytService = ref.watch(youtubeServiceProvider);
+    return await ytService.fetchSubscribedArtists();
+  }
+}
+
+// Artist New Releases Provider
+final artistNewReleasesProvider = FutureProvider.family<List<Song>, String>((ref, artistId) async {
+  final ytService = ref.watch(youtubeServiceProvider);
+  return await ytService.fetchArtistNewReleases(artistId);
+});
+
+final artistDetailsProvider = FutureProvider.family<ArtistDetails, String>((ref, artistId) async {
+  final ytService = ref.watch(youtubeServiceProvider);
+  return await ytService.fetchArtistDetails(artistId);
+});
+
 // User Playlists Provider
 final userPlaylistsProvider = AsyncNotifierProvider<UserPlaylistsNotifier, List<ZmrPlaylist>>(UserPlaylistsNotifier.new);
 
@@ -634,6 +644,18 @@ class UserPlaylistsNotifier extends AsyncNotifier<List<ZmrPlaylist>> {
     }
 
     return [];
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    final ytService = ref.read(youtubeServiceProvider);
+    await ytService.deletePlaylist(playlistId);
+    ref.invalidateSelf();
+  }
+
+  Future<void> renamePlaylist(String playlistId, String newTitle) async {
+    final ytService = ref.read(youtubeServiceProvider);
+    await ytService.renamePlaylist(playlistId, newTitle);
+    ref.invalidateSelf();
   }
 }
 
@@ -718,36 +740,14 @@ final playlistSongsProvider = FutureProvider.family<List<Song>, String>((ref, pl
   }
 
   final ytService = ref.watch(youtubeServiceProvider);
-  final dbService = ref.read(supabaseServiceProvider);
-  
-  // Try to find the playlist name from the already loaded playlists
-  final playlists = ref.read(userPlaylistsProvider).asData?.value ?? [];
-  final playlist = playlists.where((p) => p.id == playlistId).firstOrNull;
-  final playlistName = playlist?.title ?? 'Unknown Playlist';
-
   final songs = await ytService.fetchPlaylistSongs(playlistId);
   
-  if (songs.isNotEmpty) {
-    // Sync newly discovered playlist songs to Supabase with the correct playlist name
-    dbService.syncSongs(songs, playlistName: playlistName);
-  }
+
   
   return songs;
 });
 
 // Simple refresh notifier for offline status
-class OfflineStatusNotifier extends Notifier<int> {
-  @override
-  int build() => 0;
-  void refresh() => state = state + 1;
-}
-final offlineRefreshProvider = NotifierProvider<OfflineStatusNotifier, int>(OfflineStatusNotifier.new);
-
-final offlineStatusProvider = FutureProvider.family<bool, String>((ref, songId) async {
-  ref.watch(offlineRefreshProvider); // Re-run when manually refreshed
-  final dbService = ref.read(supabaseServiceProvider);
-  return await dbService.isSongSavedOffline(songId);
-});
 
 // Sleep Timer Logic
 class SleepTimerNotifier extends Notifier<Duration?> {
@@ -787,3 +787,23 @@ class SleepTimerNotifier extends Notifier<Duration?> {
 }
 
 final sleepTimerProvider = NotifierProvider<SleepTimerNotifier, Duration?>(SleepTimerNotifier.new);
+
+final lyricsProvider = FutureProvider.family<LyricsData?, String>((ref, songId) async {
+  final ytService = ref.read(youtubeServiceProvider);
+  return await ytService.fetchLyrics(songId);
+});
+
+Duration? _parseDuration(String durationStr) {
+  try {
+    final parts = durationStr.split(':');
+    if (parts.length == 2) {
+      return Duration(minutes: int.parse(parts[0]), seconds: int.parse(parts[1]));
+    } else if (parts.length == 3) {
+      return Duration(hours: int.parse(parts[0]), minutes: int.parse(parts[1]), seconds: int.parse(parts[2]));
+    }
+    return Duration(seconds: int.parse(durationStr));
+  } catch (_) {
+    return null;
+  }
+}
+

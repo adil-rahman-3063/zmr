@@ -192,20 +192,20 @@ class InnerTubeClient {
   /// Liking/Disliking
   Future<Response> like(String videoId) => post('like/like', {
     'target': {'videoId': videoId}
-  });
+  }, setLogin: true);
 
   Future<Response> unlike(String videoId) => post('like/removelike', {
     'target': {'videoId': videoId}
-  });
+  }, setLogin: true);
 
   /// Subscriptions
   Future<Response> subscribe(String channelId) => post('subscription/subscribe', {
     'channelIds': [channelId]
-  });
+  }, setLogin: true);
 
   Future<Response> unsubscribe(String channelId) => post('subscription/unsubscribe', {
     'channelIds': [channelId]
-  });
+  }, setLogin: true);
 
   /// Playlist Management
   Future<Response> createPlaylist(String title, {List<String>? videoIds}) => post('playlist/create', {

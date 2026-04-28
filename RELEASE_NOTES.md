@@ -1,3 +1,15 @@
+# ZMR Music v1.2.1 - Artist Experience Stability Hotfix 🩹
+
+This minor update resolves critical issues discovered during the rollout of the Artist Experience.
+
+### 🔧 Fixes & Stability
+* **Resolved 400 Errors**: Fixed a critical "Bad Request" error that occurred when fetching extended artist song lists or toggling subscriptions.
+* **Optimistic Follow Actions**: Pressing "Follow" or "Following" now provides instant visual feedback while the sync happens in the background. No more waiting for the server to confirm!
+* **Authenticated Requests**: Corrected authentication context for likes and subscriptions, ensuring actions are properly saved to your YouTube Music account.
+* **Enhanced Discovery**: Improved the reliability of the "Songs" section in artist profiles to fetch a much larger catalog of music.
+
+---
+
 # ZMR Music v1.2.0 - The Artist Experience 🎤
 
 This update transforms how you interact with your favorite musicians, bringing dedicated profiles and deep-linking across the entire app.

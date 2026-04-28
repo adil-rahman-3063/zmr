@@ -72,9 +72,20 @@ class YoutubeService {
       }
     }
 
-    final freshTokens = await fetchTokens();
-    _innerTube.updateTokens(freshTokens.visitorData, freshTokens.poToken);
-    return freshTokens;
+    try {
+      final freshTokens = await fetchTokens();
+      _innerTube.updateTokens(freshTokens.visitorData, freshTokens.poToken);
+      return freshTokens;
+    } catch (e) {
+      debugPrint('ZMR [TOKENS]: Fetch failed, using safety fallback. Error: $e');
+      final fallback = TokenPair(
+        visitorData: 'CgtSdU9mS3A3S09RNCi95fWwBg%3D%3D', // Standard YTM visitor data fallback
+        poToken: '',
+      );
+      _tokens = fallback;
+      _innerTube.updateTokens(fallback.visitorData, fallback.poToken);
+      return fallback;
+    }
   }
 
   /// Fetches fresh tokens from the Cloudflare backend and saves them to cache.
@@ -84,7 +95,21 @@ class YoutubeService {
       final response = await _dio.get('${YoutubeConfig.tokenProviderUrl}${YoutubeConfig.dataEndpoint}');
       
       if (response.statusCode == 200) {
-        _tokens = TokenPair.fromJson(response.data);
+        dynamic data = response.data;
+        if (data is String) {
+          try {
+            data = jsonDecode(data);
+          } catch (e) {
+            debugPrint('ZMR [TOKENS]: Failed to decode JSON string: $e');
+            throw Exception('Invalid JSON format from Token Provider');
+          }
+        }
+        
+        if (data is! Map<String, dynamic>) {
+          throw Exception('Token Provider returned ${data.runtimeType} instead of Map');
+        }
+
+        _tokens = TokenPair.fromJson(data);
         
         // Save to cache
         final prefs = await SharedPreferences.getInstance();

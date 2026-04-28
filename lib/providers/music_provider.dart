@@ -586,6 +586,36 @@ class FollowedArtistsNotifier extends AsyncNotifier<List<Artist>> {
     final ytService = ref.watch(youtubeServiceProvider);
     return await ytService.fetchSubscribedArtists();
   }
+
+  Future<void> toggleFollow(Artist artist) async {
+    final ytService = ref.read(youtubeServiceProvider);
+    final previousState = state;
+    final currentList = state.value ?? [];
+    final isFollowing = currentList.any((a) => a.id == artist.id);
+
+    // 1. Optimistic Update
+    if (isFollowing) {
+      state = AsyncData(currentList.where((a) => a.id != artist.id).toList());
+    } else {
+      state = AsyncData([artist, ...currentList]);
+    }
+
+    // 2. Network Request
+    try {
+      if (isFollowing) {
+        await ytService.unsubscribeFromArtist(artist.id);
+      } else {
+        await ytService.subscribeToArtist(artist.id);
+      }
+      // Re-fetch to be absolutely sure we're in sync with the server
+      ref.invalidateSelf();
+    } catch (e) {
+      // 3. Rollback
+      state = previousState;
+      debugPrint('ZMR [FOLLOW-TOGGLE] Error (Rolled back): $e');
+      rethrow;
+    }
+  }
 }
 
 // Artist New Releases Provider

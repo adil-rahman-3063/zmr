@@ -40,12 +40,7 @@ class ArtistPage extends ConsumerWidget {
                           selected: isFollowing,
                           onSelected: (val) async {
                             try {
-                              if (isFollowing) {
-                                await ref.read(youtubeServiceProvider).unsubscribeFromArtist(artist.id);
-                              } else {
-                                await ref.read(youtubeServiceProvider).subscribeToArtist(artist.id);
-                              }
-                              ref.invalidate(followedArtistsProvider);
+                              await ref.read(followedArtistsProvider.notifier).toggleFollow(artist);
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -131,7 +126,7 @@ class ArtistPage extends ConsumerWidget {
               return SliverList(
                 delegate: SliverChildListDelegate([
                   if (details.popularSongs.isNotEmpty) ...[
-                    _SectionHeader(title: 'Popular Songs'),
+                    _SectionHeader(title: 'Songs'),
                     ...details.popularSongs.asMap().entries.map((entry) {
                       final index = entry.key;
                       final song = entry.value;
@@ -188,20 +183,9 @@ class ArtistPage extends ConsumerWidget {
               child: Center(child: Text('Error: $e')),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          const SliverToBoxAdapter(child: SizedBox(height: 60)),
         ],
       ),
-      floatingActionButton: detailsAsync.hasValue && detailsAsync.value!.popularSongs.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                ref.read(playbackProvider.notifier).setQueue(detailsAsync.value!.popularSongs, initialIndex: 0);
-              },
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              icon: const Icon(Iconsax.play),
-              label: Text('Shuffle All', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-            ).animate().scale()
-          : null,
     );
   }
 }

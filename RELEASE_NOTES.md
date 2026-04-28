@@ -1,4 +1,4 @@
-# ZMR Music v1.1.0 - The Artist Experience 🎤
+# ZMR Music v1.2.0 - The Artist Experience 🎤
 
 This update transforms how you interact with your favorite musicians, bringing dedicated profiles and deep-linking across the entire app.
 

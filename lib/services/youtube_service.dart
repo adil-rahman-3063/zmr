@@ -912,10 +912,16 @@ class YoutubeService {
             try {
                final bottomEndpoint = shelf['bottomEndpoint'] ?? 
                                     shelf['title']?['runs']?[0]?['navigationEndpoint'];
-               final seeAllBrowseId = bottomEndpoint?['browseEndpoint']?['browseId'];
+               final browseEndpoint = bottomEndpoint?['browseEndpoint'];
+               final seeAllBrowseId = browseEndpoint?['browseId'];
+               final seeAllParams = browseEndpoint?['params'];
                
                if (seeAllBrowseId != null) {
-                 final moreSongsResponse = await _innerTube.browse(browseId: seeAllBrowseId);
+                 final moreSongsResponse = await _innerTube.browse(
+                   browseId: seeAllBrowseId, 
+                   params: seeAllParams,
+                   setLogin: true,
+                 );
                  if (moreSongsResponse.statusCode == 200) {
                    final moreSongs = _parseBrowseSongs(moreSongsResponse.data);
                    for (var s in moreSongs) {

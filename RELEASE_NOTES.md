@@ -1,3 +1,14 @@
+# ZMR Music v1.0.1 - Infrastructure Update 🛠️
+
+This update focuses on reinforcing the application's underlying infrastructure to ensure consistent data synchronization and smoother playback reliability.
+
+### 🔧 Stability Improvements
+* **Resilient Token Provider**: Enhanced the app's ability to handle edge cases with the Cloudflare Link Provider, including support for non-standard response formats.
+* **Safety Fallback Mechanism**: Introduced an automated fallback system for library synchronization. Your playlists and liked songs will now load successfully even if the token service is experiencing temporary instability.
+* **Concurrent Request Optimization**: Optimized how the app handles multiple simultaneous data requests to reduce network overhead and prevent redundant token fetches.
+
+---
+
 # ZMR Music v1.0.0 - Initial Release 🚀
 
 Welcome to the first official release of ZMR Music! ZMR is a premium, high-performance YouTube Music client designed for audiophiles who value a sleek, distraction-free experience.

@@ -92,4 +92,36 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
   void updateMetadata(MediaItem item) {
     mediaItem.add(item);
   }
+
+  /// Manually broadcast loading state (useful during async URL fetching)
+  void broadcastLoading() {
+    final playing = _player.playing;
+    final currentState = playbackState.value;
+    
+    final newState = PlaybackState(
+      controls: [
+        MediaControl.skipToPrevious,
+        if (playing) MediaControl.pause else MediaControl.play,
+        MediaControl.skipToNext,
+        MediaControl.stop,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+        MediaAction.playPause,
+      },
+      androidCompactActionIndices: const [0, 1, 2],
+      processingState: AudioProcessingState.loading,
+      playing: playing,
+      updatePosition: currentState.updatePosition,
+      bufferedPosition: currentState.bufferedPosition,
+      speed: currentState.speed,
+      queueIndex: currentState.queueIndex,
+    );
+    
+    playbackState.add(newState);
+  }
 }

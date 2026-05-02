@@ -5,9 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'yt_login_webview.dart';
+import '../main.dart';
 import '../providers/auth_provider.dart';
-import 'home_page.dart';
-import '../widgets/zmr_snackbar.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -17,6 +17,25 @@ class LoginPage extends ConsumerStatefulWidget {
 }
 
 class _LoginPageState extends ConsumerState<LoginPage> {
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(shellVisibilityOverrideProvider.notifier).setState(false);
+    });
+  }
+
+  @override
+  void dispose() {
+    // Restore shell visibility when leaving this page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.context.mounted) {
+        ref.read(shellVisibilityOverrideProvider.notifier).setState(true);
+      }
+    });
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,17 +142,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         child: InkWell(
                           onTap: () async {
                             try {
-                              final authService = ref.read(authServiceProvider);
-                              await authService.signInWithGoogle();
+                              // First, log into Supabase using Google Sign-In
+                              await ref.read(authServiceProvider).signInWithGoogle();
                               
+                              // If successful, proceed to capture YouTube cookies
                               if (context.mounted) {
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (context) => const HomePage()),
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (context) => const YtLoginWebview()),
                                 );
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ZmrSnackbar.show(context, e.toString());
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Login failed: $e')),
+                                );
                               }
                             }
                           },
@@ -145,10 +167,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.g_mobiledata, size: 42, color: Theme.of(context).colorScheme.onSurface),
+                                  Icon(Iconsax.user, size: 32, color: Theme.of(context).colorScheme.onSurface),
                                   const SizedBox(width: 12),
                                   Text(
-                                    'Continue with Google',
+                                    'Login using Google',
                                     style: GoogleFonts.outfit(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -164,22 +186,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ).animate().fade(delay: 800.ms).slideY(begin: 0.2, end: 0).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack),
                   const SizedBox(height: 16),
-                  Center(
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (context) => const HomePage()),
-                        );
-                      },
-                      child: Text(
-                        'Skip to Home (Debug Mode)',
-                        style: GoogleFonts.outfit(
-                          color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 60),
                 ],
               ),
@@ -189,5 +195,4 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       ),
     );
   }
-
 }

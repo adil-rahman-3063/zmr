@@ -12,14 +12,18 @@ import '../models/song_model.dart';
 import '../models/playlist_model.dart';
 import '../models/artist_model.dart';
 import '../models/home_section.dart';
+import '../models/home_feed.dart';
+import '../models/home_chip.dart';
 import '../providers/music_provider.dart';
 import 'playlist_page.dart';
+import 'profile_page.dart';
 import 'artist_page.dart';
 import 'settings_page.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/zmr_snackbar.dart';
 import '../main.dart';
+import 'yt_login_webview.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -36,6 +40,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(shellVisibilityOverrideProvider.notifier).setState(true);
       _checkOnboarding();
     });
   }
@@ -74,15 +79,16 @@ class _HomePageState extends ConsumerState<HomePage> {
               onPressed: () {
                 ref.read(cookieOnboardingProvider.notifier).markAsShown();
                 Navigator.pop(ctx);
-                // Switch to profile tab
-                ref.read(bottomNavProvider.notifier).setIndex(3);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const YtLoginWebview()),
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text('Go to Settings', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+              child: Text('Connect YouTube', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -230,8 +236,14 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ),
+
+          // Category Chips
+          _buildChipsSliver(homeFeedAsync),
           
-          // Playlists Section
+          // Home Feed (Quick Picks, personalized sections, etc.)
+          _buildHomeFeedSliver(homeFeedAsync),
+          
+          // Your Library sections (Playlists, Artists)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
@@ -274,9 +286,6 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ),
-          
-          // Home Feed (Quick Picks, etc.)
-          _buildHomeFeedSliver(homeFeedAsync),
 
           // Followed Artists New Releases
           _buildFollowedArtistsSections(ref),
@@ -368,9 +377,57 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildHomeFeedSliver(AsyncValue<List<HomeSection>> asyncValue) {
+  Widget _buildChipsSliver(AsyncValue<HomeFeed> asyncValue) {
     return asyncValue.when(
-      data: (sections) {
+      data: (feed) {
+        if (feed.chips.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        return SliverToBoxAdapter(
+          child: Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(vertical: 12.0),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              itemCount: feed.chips.length,
+              itemBuilder: (context, index) {
+                final chip = feed.chips[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: FilterChip(
+                    label: Text(chip.title),
+                    selected: chip.isSelected,
+                    onSelected: (selected) {
+                      ref.read(homeFeedProvider.notifier).selectCategory(chip);
+                    },
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
+                    selectedColor: Theme.of(context).colorScheme.primary,
+                    labelStyle: GoogleFonts.outfit(
+                      color: chip.isSelected 
+                          ? Theme.of(context).colorScheme.onPrimary 
+                          : Theme.of(context).colorScheme.onSurface,
+                      fontWeight: chip.isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide.none,
+                    ),
+                    showCheckmark: false,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+    );
+  }
+
+  Widget _buildHomeFeedSliver(AsyncValue<HomeFeed> asyncValue) {
+    return asyncValue.when(
+      data: (feed) {
+        final sections = feed.sections;
         if (sections.isEmpty) {
            return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
@@ -379,16 +436,21 @@ class _HomePageState extends ConsumerState<HomePage> {
             (context, index) {
               final section = sections[index];
               final titleLower = section.title.toLowerCase();
-              final hasSongs = section.items.any((i) => i is Song);
               
-              // Grid layouts
-              final isQuickPicks = hasSongs && (
+              // Count specific item types to guess layout
+              final songCount = section.items.whereType<Song>().length;
+              final hasPlaylists = section.items.any((i) => i is ZmrPlaylist);
+              
+              // Grid layouts logic:
+              // 1. Explicitly named "Quick picks" etc.
+              // 2. High density of songs (more than 5) and no playlists/artists
+              final isQuickPicks = (songCount > 4 && !hasPlaylists) || 
                                   titleLower.contains('quick picks') || 
                                   titleLower.contains('picks for you') ||
                                   titleLower.contains('start radio') ||
-                                  titleLower.contains('mixed for you'));
+                                  titleLower.contains('mixed for you');
 
-              // Force grid for specific discovery sections and filter for songs only
+              // Thumbnail grid for discovery
               final isThumbnailGrid = titleLower.contains('fresh find') || 
                                      titleLower.contains('new release') ||
                                      titleLower.contains('discover') ||
@@ -450,15 +512,16 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget _buildQuickPicksGrid(List<dynamic> items) {
     final songs = items.whereType<Song>().toList();
     if (songs.isEmpty) return const SizedBox.shrink();
+    final displaySongs = songs.take(20).toList();
 
     // Group songs into columns of 4
     final List<List<Song>> columns = [];
-    for (var i = 0; i < songs.length; i += 4) {
-      columns.add(songs.sublist(i, (i + 4) > songs.length ? songs.length : i + 4));
+    for (var i = 0; i < displaySongs.length; i += 4) {
+      columns.add(displaySongs.sublist(i, (i + 4) > displaySongs.length ? displaySongs.length : i + 4));
     }
 
     return SizedBox(
-      height: 280, // Height for 4 rows
+      height: 300, // Increased height for 4 rows + padding
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -466,8 +529,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         itemBuilder: (context, colIdx) {
           final columnSongs = columns[colIdx];
           return Container(
-            width: MediaQuery.of(context).size.width - 64,
-            margin: const EdgeInsets.only(right: 16),
+            width: MediaQuery.of(context).size.width * 0.88, // Show a peek of the next column
+            margin: const EdgeInsets.only(right: 12),
             child: Column(
               children: columnSongs.map((song) => _SongGridItem(song: song)).toList(),
             ),
@@ -843,7 +906,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           _buildHomeContent(),    // 0 (Home Icon)
           _buildSearchContent(),  // 1 (Discover/Explore Icon)
           _buildLibraryContent(), // 2 (Library Icon)
-          _buildProfileContent(), // 3 (Person Icon)
+          const ProfilePage(),     // 3 (User Icon)
         ],
       ),
     );

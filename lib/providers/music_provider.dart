@@ -487,10 +487,14 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     if (song == null) return;
     final player = ref.read(musicPlayerProvider);
     final ytService = ref.read(youtubeServiceProvider);
+    final handler = zmrAudioHandler as ZmrAudioHandler;
 
     try {
+      // 0. STOP THE OLD SONG IMMEDIATELY to prevent it from playing while fetching the new URL
+      await player.stop();
+
       // 1. IMMEDIATELY update metadata so the notification stays visible with the new song info
-      (zmrAudioHandler as ZmrAudioHandler).updateMetadata(
+      handler.updateMetadata(
         MediaItem(
           id: song.id,
           album: 'YouTube Music',
@@ -501,7 +505,10 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         ),
       );
 
-      // 2. Fetch URL in the background while keeping the player alive
+      // 2. Broadcast LOADING state so lockscreen/notification shows sync with the change
+      handler.broadcastLoading();
+
+      // 3. Fetch URL in the background
       final playUrl = await ytService.getDirectStreamUrl(song.id);
       
       // 3. Configure session and switch URL

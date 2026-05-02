@@ -1,3 +1,27 @@
+# ZMR Music v1.3.0 - The Discovery & Customization Update 🎨
+
+This major update introduces personalized feed filtering, advanced playback controls, and a new identity hub to make ZMR truly yours.
+
+### ✨ New Features
+*   **Modernized Home Feed**: A redesigned discovery experience featuring **Category Chips**. Instantly filter your feed for moods like "Relax", "Workout", or "Energize" with a single tap.
+*   **Dynamic Quick Picks**: Your most-listened tracks are now intelligently organized into responsive 4x4 grids for faster access.
+*   **The Profile Hub**: A new centralized location for your account info, settings, and support. Replace the old settings icon with your personal profile.
+*   **Advanced Playback Controls**:
+    *   **Crossfade (0-10s)**: Smoothly transition between tracks with customizable fade-ins.
+    *   **Gapless Playback**: Eliminate silence between songs for a continuous listening experience.
+    *   **Volume Normalization**: Balance audio levels across different tracks to prevent volume spikes.
+*   **Ultimate Personalization**:
+    *   **Theme Modes**: Full support for Light, Dark, and System-synced themes.
+    *   **AMOLED Mode**: Save battery and enjoy deep contrast with "True Black" support for OLED displays.
+*   **Integrated Bug Reporting**: Found a glitch? Report it directly from your profile using our new feedback system connected to Supabase.
+
+### 🛠️ Technical Improvements
+*   **Enhanced Feed Parsing**: Refactored the InnerTube integration to support specialized section types and parameter-based category filtering.
+*   **Settings Persistence**: All your playback and UI preferences are now saved locally and applied instantly across sessions.
+*   **Performance Optimization**: Reduced layout shifts in the home feed with better grid pre-calculation.
+
+---
+
 # ZMR Music v1.2.1 - Artist Experience Stability Hotfix 🩹
 
 This minor update resolves critical issues discovered during the rollout of the Artist Experience.

@@ -22,10 +22,12 @@ class InnerTubeClient {
   String? _visitorData;
   String? _poToken;
   String? _cookies;
+  String? _dataSyncId;
 
-  void updateTokens(String visitorData, String poToken) {
+  void updateTokens(String visitorData, String poToken, {String? dataSyncId}) {
     _visitorData = visitorData;
     _poToken = poToken;
+    if (dataSyncId != null) _dataSyncId = dataSyncId;
   }
 
   void updateCookies(String? cookies) {
@@ -64,6 +66,7 @@ class InnerTubeClient {
       'X-YouTube-Client-Version': clientVersion,
       'X-Origin': origin,
       'Referer': referer,
+      'X-Goog-AuthUser': '0',
     };
 
     if (_visitorData != null) {
@@ -94,6 +97,7 @@ class InnerTubeClient {
         },
         "user": {
           "lockedSafetyMode": false,
+          if (setLogin && _dataSyncId != null) "onBehalfOfUser": _dataSyncId,
         }
       }
     };
@@ -238,5 +242,10 @@ class InnerTubeClient {
     return post('get_transcript', {
       'params': base64.encode(utf8.encode('\n\u000b$videoId'))
     }, key: transcriptKey);
+  }
+
+  /// Get Account Menu (User info)
+  Future<Response> getAccountMenu() {
+    return post('account/account_menu', {}, setLogin: true);
   }
 }

@@ -12,11 +12,14 @@ import 'dart:math';
 import '../models/song_model.dart';
 import '../models/playlist_model.dart';
 import '../models/home_section.dart';
+import '../models/home_feed.dart';
+import '../models/home_chip.dart';
 import '../models/search_response.dart';
 import '../models/lyrics_model.dart';
 import '../models/artist_model.dart';
 import '../models/artist_details.dart';
 import '../services/youtube_service.dart';
+import 'settings_provider.dart';
 
 
 // Provider for managing global bottom navigation index
@@ -503,13 +506,34 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       
       // 3. Configure session and switch URL
       final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration.music());
+      await session.configure(const AudioSessionConfiguration.music());
       await session.setActive(true);
 
-      player.setVolume(1.0);
+      final settings = ref.read(settingsProvider);
+      
+      // Implement Normalize Volume: if enabled, we cap the volume at 0.7 to avoid loudness peaks
+      player.setVolume(settings.normalizeVolume ? 0.7 : 1.0);
+      
+      // Implement Gapless/Smooth transition: just_audio handles this well when setUrl is called
+      // If Crossfade is enabled, we could potentially do a fade out of the PREVIOUS song,
+      // but since we only have one player, we'll focus on a smooth start.
+      
       await player.setUrl(playUrl);
       await player.setLoopMode(state.isRepeatOne ? LoopMode.one : LoopMode.off);
-      await player.play(); 
+      
+      if (settings.crossfadeSeconds > 0) {
+        // Simple fade-in effect for crossfade
+        player.setVolume(0);
+        player.play();
+        final targetVolume = settings.normalizeVolume ? 0.7 : 1.0;
+        final step = targetVolume / 10;
+        for (int i = 1; i <= 10; i++) {
+          await Future.delayed(Duration(milliseconds: (settings.crossfadeSeconds * 100).toInt()));
+          player.setVolume(step * i);
+        }
+      } else {
+        await player.play(); 
+      }
 
       // If we are getting near the end of the current queue, fetch related songs
       _checkAndExtendQueue();
@@ -566,14 +590,32 @@ class TrendingSongsNotifier extends AsyncNotifier<List<Song>> {
   }
 }
 
-// Home Feed Provider (Quick Picks, etc.)
-final homeFeedProvider = AsyncNotifierProvider<HomeFeedNotifier, List<HomeSection>>(HomeFeedNotifier.new);
+// Home Feed Provider (Quick Picks, Chips, etc.)
+final homeFeedProvider = AsyncNotifierProvider<HomeFeedNotifier, HomeFeed>(HomeFeedNotifier.new);
 
-class HomeFeedNotifier extends AsyncNotifier<List<HomeSection>> {
+class HomeFeedNotifier extends AsyncNotifier<HomeFeed> {
+  String? _currentParams;
+
   @override
-  Future<List<HomeSection>> build() async {
+  Future<HomeFeed> build() async {
     final ytService = ref.watch(youtubeServiceProvider);
-    return await ytService.fetchHomeFeed();
+    return await ytService.fetchHomeFeed(params: _currentParams);
+  }
+
+  Future<void> selectCategory(HomeChip chip) async {
+    // If selecting an already selected chip (that's not 'All'), we treat it as deselecting?
+    // Actually YTM chips usually have a deselect endpoint or you just tap another one.
+    // We'll just update params and refresh.
+    _currentParams = chip.params;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      return await ref.read(youtubeServiceProvider).fetchHomeFeed(params: _currentParams);
+    });
+  }
+
+  void reset() {
+    _currentParams = null;
+    ref.invalidateSelf();
   }
 }
 
@@ -660,8 +702,8 @@ class UserPlaylistsNotifier extends AsyncNotifier<List<ZmrPlaylist>> {
       }
     } catch (e) {
       if (e.toString().contains('AUTH_ERROR')) {
-        debugPrint('ZMR [AUTH]: Clearing expired cookies from Playlists provider.');
-        Future.microtask(() => ref.read(youtubeCookieProvider.notifier).setCookies(null));
+        debugPrint('ZMR [AUTH]: Auth error detected in Playlists provider.');
+        // Future.microtask(() => ref.read(youtubeCookieProvider.notifier).setCookies(null));
       }
       debugPrint('Fetch Playlists Error: $e');
     }
@@ -712,8 +754,8 @@ class LikedSongsNotifier extends AsyncNotifier<List<Song>> {
       }
     } catch (e) {
       if (e.toString().contains('AUTH_ERROR')) {
-        debugPrint('ZMR [AUTH]: Clearing expired cookies from Liked Songs provider.');
-        Future.microtask(() => ref.read(youtubeCookieProvider.notifier).setCookies(null));
+        debugPrint('ZMR [AUTH]: Auth error detected in Liked Songs provider.');
+        // Future.microtask(() => ref.read(youtubeCookieProvider.notifier).setCookies(null));
       }
       debugPrint('Fetch Liked Songs Error: $e');
     }

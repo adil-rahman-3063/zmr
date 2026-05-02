@@ -12,17 +12,21 @@ import '../models/lyrics_model.dart';
 import '../models/artist_details.dart';
 import 'youtube_extractor_service.dart';
 import 'innertube_client.dart';
+import '../models/home_chip.dart';
+import '../models/home_feed.dart';
 
 class TokenPair {
   final String visitorData;
   final String poToken;
+  final String? dataSyncId;
 
-  TokenPair({required this.visitorData, required this.poToken});
+  TokenPair({required this.visitorData, required this.poToken, this.dataSyncId});
 
   factory TokenPair.fromJson(Map<String, dynamic> json) {
     return TokenPair(
       visitorData: Uri.decodeComponent(json['visitorData'] ?? ''),
       poToken: Uri.decodeComponent(json['poToken'] ?? ''),
+      dataSyncId: json['dataSyncId'],
     );
   }
 
@@ -30,6 +34,7 @@ class TokenPair {
     return {
       'visitorData': visitorData,
       'poToken': poToken,
+      'dataSyncId': dataSyncId,
     };
   }
 }
@@ -51,8 +56,15 @@ class YoutubeService {
   /// Fetches fresh tokens from the Cloudflare backend if not already available.
   /// If [forceRefresh] is true, it will fetch from the server regardless of cache.
   Future<TokenPair> getValidTokens({bool forceRefresh = false}) async {
+    // If we have an authenticated session (dataSyncId), we MUST stick to its visitorData.
+    // Overwriting it with a generic one from the worker will break the session.
+    if (_tokens != null && _tokens!.dataSyncId != null) {
+       _innerTube.updateTokens(_tokens!.visitorData, _tokens!.poToken, dataSyncId: _tokens!.dataSyncId);
+       return _tokens!;
+    }
+
     if (_tokens != null && !forceRefresh) {
-       _innerTube.updateTokens(_tokens!.visitorData, _tokens!.poToken);
+       _innerTube.updateTokens(_tokens!.visitorData, _tokens!.poToken, dataSyncId: _tokens!.dataSyncId);
        return _tokens!;
     }
 
@@ -63,7 +75,7 @@ class YoutubeService {
       if (savedTokens != null) {
         try {
           _tokens = TokenPair.fromJson(jsonDecode(savedTokens));
-          _innerTube.updateTokens(_tokens!.visitorData, _tokens!.poToken);
+          _innerTube.updateTokens(_tokens!.visitorData, _tokens!.poToken, dataSyncId: _tokens!.dataSyncId);
           debugPrint('ZMR [TOKENS]: Loaded from CACHE.');
           return _tokens!;
         } catch (e) {
@@ -74,7 +86,7 @@ class YoutubeService {
 
     try {
       final freshTokens = await fetchTokens();
-      _innerTube.updateTokens(freshTokens.visitorData, freshTokens.poToken);
+      _innerTube.updateTokens(freshTokens.visitorData, freshTokens.poToken, dataSyncId: freshTokens.dataSyncId);
       return freshTokens;
     } catch (e) {
       debugPrint('ZMR [TOKENS]: Fetch failed, using safety fallback. Error: $e');
@@ -83,9 +95,40 @@ class YoutubeService {
         poToken: '',
       );
       _tokens = fallback;
-      _innerTube.updateTokens(fallback.visitorData, fallback.poToken);
+      _innerTube.updateTokens(fallback.visitorData, fallback.poToken, dataSyncId: fallback.dataSyncId);
       return fallback;
     }
+  }
+
+  void setTokens(TokenPair tokens) async {
+    _tokens = tokens;
+    _innerTube.updateTokens(tokens.visitorData, tokens.poToken, dataSyncId: tokens.dataSyncId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, jsonEncode(tokens.toJson()));
+  }
+
+  Future<Map<String, String>?> getAccountInfo() async {
+    try {
+      final response = await _innerTube.getAccountMenu();
+      if (response.statusCode == 200) {
+        final data = response.data;
+        // Basic parsing of account menu renderer
+        final header = _findAllElements(data, 'activeAccountHeaderRenderer').firstOrNull;
+        if (header != null) {
+          final name = _getText(header['accountName']);
+          final email = _getText(header['accountEmail']);
+          final handle = _getText(header['channelHandle']);
+          return {
+            'name': name,
+            'email': email,
+            'handle': handle,
+          };
+        }
+      }
+    } catch (e) {
+      debugPrint('ZMR [ACCOUNT]: Failed to get account info: $e');
+    }
+    return null;
   }
 
   /// Fetches fresh tokens from the Cloudflare backend and saves them to cache.
@@ -109,7 +152,15 @@ class YoutubeService {
           throw Exception('Token Provider returned ${data.runtimeType} instead of Map');
         }
 
-        _tokens = TokenPair.fromJson(data);
+        final newData = TokenPair.fromJson(data);
+        
+        // CRITICAL: Preserve dataSyncId and the session-linked visitorData
+        // Overwriting visitorData during a session will cause 401/403 errors
+        _tokens = TokenPair(
+          visitorData: (_tokens?.dataSyncId != null) ? (_tokens?.visitorData ?? newData.visitorData) : newData.visitorData,
+          poToken: newData.poToken,
+          dataSyncId: _tokens?.dataSyncId,
+        );
         
         // Save to cache
         final prefs = await SharedPreferences.getInstance();
@@ -197,18 +248,39 @@ class YoutubeService {
     }
   }
 
-  /// Gets home feed sections (Quick Picks, Recently Played, etc.)
-  Future<List<HomeSection>> fetchHomeFeed() async {
+  /// Gets home feed sections and chips (Quick Picks, Recently Played, etc.)
+  Future<HomeFeed> fetchHomeFeed({String? params}) async {
     try {
       await getValidTokens();
-      final response = await _innerTube.browse(); 
+      final response = await _innerTube.browse(setLogin: true, params: params); 
       if (response.statusCode == 200) {
-        return _parseHomeFeed(response.data);
+        return _parseHomeFeedResponse(response.data);
       }
     } catch (e) {
       debugPrint('ZMR [HOME FEED] Error: $e');
     }
-    return [];
+    return HomeFeed.empty();
+  }
+
+  HomeFeed _parseHomeFeedResponse(dynamic data) {
+    final sections = _parseHomeFeed(data);
+    final chips = _parseHomeChips(data);
+    return HomeFeed(chips: chips, sections: sections);
+  }
+
+  List<HomeChip> _parseHomeChips(dynamic data) {
+    final List<HomeChip> chips = [];
+    try {
+      final chipContainers = _findAllElements(data, 'chipCloudChipRenderer');
+      for (var chip in chipContainers) {
+        try {
+          chips.add(HomeChip.fromMap({'chipCloudChipRenderer': chip}));
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('ZMR [CHIPS-PARSE] Error: $e');
+    }
+    return chips;
   }
 
   /// RESTORED: Gets trending songs using InnerTube browse.
@@ -234,25 +306,31 @@ class YoutubeService {
   List<HomeSection> _parseHomeFeed(dynamic data) {
     final List<HomeSection> sections = [];
     try {
-      // Find all types of shelves/grids
+      // Find all types of shelves/grids/carousels
       final carouselShelves = _findAllElements(data, 'musicCarouselShelfRenderer');
       final basicShelves = _findAllElements(data, 'musicShelfRenderer');
       final gridShelves = _findAllElements(data, 'musicGridRenderer');
+      final cardShelves = _findAllElements(data, 'musicCardShelfRenderer');
       
-      final allShelves = [...carouselShelves, ...basicShelves, ...gridShelves];
+      final allShelves = [...carouselShelves, ...basicShelves, ...gridShelves, ...cardShelves];
       
       for (var shelf in allShelves) {
         // Try to get title from many possible header locations
         final titleNode = 
             shelf['header']?['musicCarouselShelfBasicHeaderRenderer']?['title'] ??
             shelf['header']?['musicResponsiveListItemFixedColumnRenderer']?['title'] ??
+            shelf['header']?['musicShelfBasicHeaderRenderer']?['title'] ??
+            shelf['header']?['musicHeaderRenderer']?['title'] ??
             shelf['title'];
         
         final title = _getText(titleNode);
         if (title.isEmpty || title == 'Unknown') continue;
         
+        // Avoid duplicate sections (InnerTube sometimes returns same shelf in different containers)
+        if (sections.any((s) => s.title == title)) continue;
+
         final List<dynamic> items = [];
-        // Support both 'contents' (carousel/shelf) and 'items' (grid)
+        // Support both 'contents' (carousel/shelf) and 'items' (grid/card)
         final shelfItems = (shelf['contents'] ?? shelf['items']) as List?;
         
         if (shelfItems != null) {
@@ -263,7 +341,8 @@ class YoutubeService {
             final renderer = item['musicTwoRowItemRenderer'] ?? 
                             item['musicResponsiveListItemRenderer'] ?? 
                             item['musicMultiRowListItemRenderer'] ??
-                            item['musicNavigationButtonRenderer'];
+                            item['musicNavigationButtonRenderer'] ??
+                            item['musicItemThumbnailOverlayRenderer'];
                             
             if (renderer != null) {
                dynamic parsed;
@@ -272,10 +351,14 @@ class YoutubeService {
                } else if (item.containsKey('musicResponsiveListItemRenderer')) {
                  parsed = _parseResponsiveListItem(renderer);
                } else if (item.containsKey('musicMultiRowListItemRenderer')) {
-                 parsed = _parseResponsiveListItem(renderer); // MultiRow is similar to Responsive
+                 parsed = _parseResponsiveListItem(renderer);
                }
                
                if (parsed != null) items.add(parsed);
+            } else {
+              // Try parsing the item directly if it's already a renderer
+              final directParsed = _parseTwoRowItem(item) ?? _parseResponsiveListItem(item);
+              if (directParsed != null) items.add(directParsed);
             }
           }
         }
@@ -462,7 +545,7 @@ class YoutubeService {
     if (_cookies == null) return [];
     try {
       await getValidTokens(forceRefresh: isRetry);
-      final response = await _innerTube.browse(browseId: "FEmusic_liked_playlists");
+      final response = await _innerTube.browse(browseId: "FEmusic_liked_playlists", setLogin: true);
 
       if (response.statusCode == 200) {
         return _parseBrowsePlaylists(response.data);

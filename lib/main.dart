@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/app_theme.dart';
 import 'core/supabase_config.dart';
-import 'providers/theme_provider.dart';
+import 'providers/settings_provider.dart';
 import 'providers/music_provider.dart';
 import 'providers/auth_provider.dart';
 import 'pages/login_page.dart';
@@ -76,10 +76,12 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
+    final settings = ref.watch(settingsProvider);
+    final themeMode = settings.themeMode;
     final user = ref.watch(currentUserProvider);
     final navKey = ref.read(navigatorKeyProvider);
     final dynamicColors = ref.watch(dynamicColorSchemeProvider).value;
+    final hasYtCookies = ref.watch(youtubeCookieProvider) != null;
 
     // Force navigation back to root on sign out
     ref.listen<User?>(currentUserProvider, (previous, next) {
@@ -91,8 +93,20 @@ class MyApp extends ConsumerWidget {
     final defaultDarkTheme = AppTheme.darkTheme;
     final theme = themeMode == ThemeMode.light ? AppTheme.lightTheme : (
         dynamicColors != null 
-          ? defaultDarkTheme.copyWith(colorScheme: dynamicColors)
-          : defaultDarkTheme
+          ? defaultDarkTheme.copyWith(
+              colorScheme: dynamicColors.copyWith(
+                surface: settings.amoledMode ? Colors.black : dynamicColors.surface,
+                surfaceContainer: settings.amoledMode ? Colors.black : dynamicColors.surfaceContainer,
+              )
+            )
+          : (settings.amoledMode 
+              ? defaultDarkTheme.copyWith(
+                  colorScheme: defaultDarkTheme.colorScheme.copyWith(
+                    surface: Colors.black,
+                    surfaceContainer: Colors.black,
+                  )
+                )
+              : defaultDarkTheme)
     );
 
     return MaterialApp(
@@ -102,7 +116,7 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: theme,
       themeMode: themeMode,
-      home: user != null ? const HomePage() : const LoginPage(),
+      home: (user != null || hasYtCookies) ? const HomePage() : const LoginPage(),
       builder: (context, child) {
         return HeroControllerScope.none(
           child: Navigator(
@@ -117,31 +131,46 @@ class MyApp extends ConsumerWidget {
   }
 }
 
+class ShellVisibilityNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+  void setState(bool value) => state = value;
+}
+
+final shellVisibilityOverrideProvider = NotifierProvider<ShellVisibilityNotifier, bool>(ShellVisibilityNotifier.new);
+
 class _ZmrAppShell extends ConsumerWidget {
   final Widget child;
   const _ZmrAppShell({required this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
     final isFullPlayerVisible = ref.watch(isFullPlayerVisibleProvider);
     final currentSong = ref.watch(currentSongProvider);
+    final shellOverride = ref.watch(shellVisibilityOverrideProvider);
     
     final size = MediaQuery.of(context).size;
+
+    // Show shell everywhere except where explicitly hidden (like Login/WebView)
+    final isShellVisible = shellOverride;
+    debugPrint('ZMR [SHELL]: Visibility: $isShellVisible (Override: $shellOverride)');
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          // Main Content
-          child,
+          // Main Content with padding for the floating bar
+          Padding(
+            padding: EdgeInsets.only(bottom: isShellVisible ? 110 : 0),
+            child: child,
+          ),
           
           // Navigation & Mini Player (Stacked Cards layer)
-          if (user != null)
+          if (isShellVisible)
             _StackedBottomShell(currentSong: currentSong),
 
           // Full Player (Sliding layer)
-          if (user != null && currentSong != null)
+          if (isShellVisible && currentSong != null)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 450),
               curve: Curves.easeOutQuart,

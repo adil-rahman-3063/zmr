@@ -152,5 +152,5 @@ const List<IconData> _icons = [
   Iconsax.home_1,
   Iconsax.search_normal_1,
   Iconsax.music_playlist,
-  Iconsax.setting_2,
+  Iconsax.user,
 ];

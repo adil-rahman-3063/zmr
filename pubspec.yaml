@@ -58,6 +58,8 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_js: ^0.8.1
   flutter_animate: ^4.5.2
+  webview_flutter: ^4.10.0
+  webview_cookie_manager_flutter: ^3.0.1
 
 dev_dependencies:
   flutter_test:

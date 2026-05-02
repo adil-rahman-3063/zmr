@@ -6,11 +6,12 @@ A premium, high-performance YouTube Music client built with Flutter. ZMR focuses
 
 ## ✨ Features
 
-- **Premium UI/UX**: Modern design with glassmorphism, dynamic colors, and fluid animations.
+- **Dynamic Home Feed**: Modernized discovery with category-based filtering chips and structured sections like "Quick Picks".
+- **Advanced Playback**: Integrated controls for Crossfade, Gapless playback, and Volume Normalization.
+- **Customizable UI/UX**: Support for System/Dark/Light themes with a dedicated AMOLED "true-black" mode.
 - **Background Playback**: Full support for lock-screen controls and persistent audio sessions.
-- **Cookie Authentication**: Secure, local-only cookie storage for a standalone YouTube Music experience.
-- **Smart Queue**: Automated "Up Next" suggestions and radio discovery.
-- **Performance First**: Minimal resource footprint with high-quality stream extraction.
+- **Integrated Bug Reporting**: In-app feedback system connected directly to Supabase for rapid issue tracking.
+- **Performance First**: Minimal resource footprint with optimized high-quality stream extraction.
 
 ## 🚀 Getting Started
 

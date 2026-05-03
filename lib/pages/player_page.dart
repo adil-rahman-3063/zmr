@@ -425,12 +425,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final playback = ref.watch(playbackProvider);
     final size = MediaQuery.of(context).size;
 
-    // Auto-advance when song completes
-    ref.listen(playerProcessingStateProvider, (_, state) {
-      if (state.value == ProcessingState.completed) {
-        ref.read(playbackProvider.notifier).next();
-      }
-    });
+
 
     // Live playback streams
     final position = ref.watch(playerPositionProvider).value ?? Duration.zero;

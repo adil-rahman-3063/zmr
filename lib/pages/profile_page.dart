@@ -14,6 +14,18 @@ class ProfilePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final accountInfo = ref.watch(accountInfoProvider);
+    final supabaseUser = ref.watch(currentUserProvider);
+
+    final name = accountInfo.value?['name'] ?? supabaseUser?.userMetadata?['full_name'] ?? 'User Name';
+    final ytEmail = accountInfo.value?['email'];
+    final ytPhoto = accountInfo.value?['photoUrl'];
+
+    final email = (ytEmail != null && ytEmail != 'Unknown') 
+        ? ytEmail 
+        : (supabaseUser?.email ?? 'user@email.com');
+    final photoUrl = (ytPhoto != null && ytPhoto.isNotEmpty)
+        ? ytPhoto
+        : supabaseUser?.userMetadata?['avatar_url'];
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -42,25 +54,26 @@ class ProfilePage extends ConsumerWidget {
                       CircleAvatar(
                         radius: 40,
                         backgroundColor: colorScheme.primary,
-                        child: Text(
-                          accountInfo.value?['name']?[0].toUpperCase() ?? 'U',
+                        backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                        child: photoUrl == null ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'U',
                           style: GoogleFonts.outfit(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
                             color: colorScheme.onPrimary,
                           ),
-                        ),
+                        ) : null,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        accountInfo.value?['name'] ?? 'User Name',
+                        name,
                         style: GoogleFonts.outfit(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       Text(
-                        accountInfo.value?['email'] ?? 'user@email.com',
+                        email,
                         style: GoogleFonts.outfit(
                           fontSize: 14,
                           color: colorScheme.onSurface.withAlpha(150),

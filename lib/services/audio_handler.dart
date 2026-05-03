@@ -116,7 +116,7 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
       androidCompactActionIndices: const [0, 1, 2],
       processingState: AudioProcessingState.loading,
       playing: playing,
-      updatePosition: currentState.updatePosition,
+      updatePosition: Duration.zero,
       bufferedPosition: currentState.bufferedPosition,
       speed: currentState.speed,
       queueIndex: currentState.queueIndex,

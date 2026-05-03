@@ -11,7 +11,7 @@ import '../services/audio_handler.dart';
 import 'dart:math';
 import '../models/song_model.dart';
 import '../models/playlist_model.dart';
-import '../models/home_section.dart';
+
 import '../models/home_feed.dart';
 import '../models/home_chip.dart';
 import '../models/search_response.dart';
@@ -492,6 +492,7 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     try {
       // 0. STOP THE OLD SONG IMMEDIATELY to prevent it from playing while fetching the new URL
       await player.stop();
+      await player.seek(Duration.zero);
 
       // 1. IMMEDIATELY update metadata so the notification stays visible with the new song info
       handler.updateMetadata(

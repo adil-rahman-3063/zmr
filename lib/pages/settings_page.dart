@@ -3,10 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../providers/settings_provider.dart';
-import '../providers/music_provider.dart';
 import 'yt_login_webview.dart';
 import 'cookie_instructions_page.dart';
-import '../widgets/zmr_snackbar.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -113,7 +111,7 @@ class SettingsPage extends ConsumerWidget {
         subtitle: Text(subtitle, style: GoogleFonts.outfit(fontSize: 12, color: colorScheme.onSurface.withAlpha(150))),
         value: value,
         onChanged: onChanged,
-        activeColor: colorScheme.primary,
+        activeThumbColor: colorScheme.primary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

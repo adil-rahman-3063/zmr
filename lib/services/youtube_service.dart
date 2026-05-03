@@ -118,10 +118,14 @@ class YoutubeService {
           final name = _getText(header['accountName']);
           final email = _getText(header['accountEmail']);
           final handle = _getText(header['channelHandle']);
+          final photoThumbnails = _getThumbnails(header['accountPhoto']);
+          final photoUrl = photoThumbnails.isNotEmpty ? photoThumbnails.last : '';
+          
           return {
             'name': name,
             'email': email,
             'handle': handle,
+            'photoUrl': photoUrl,
           };
         }
       }

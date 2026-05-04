@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:just_audio/just_audio.dart';
-import '../providers/music_provider.dart';
+import 'package:zmr/providers/music_provider.dart';
 
 class GlobalMiniPlayer extends ConsumerWidget {
   const GlobalMiniPlayer({super.key});
@@ -105,6 +105,7 @@ class GlobalMiniPlayer extends ConsumerWidget {
                     onPressed: () {
                       if (isLoading) return;
                       final player = ref.read(musicPlayerProvider);
+                      if (player == null) return;
                       if (isPlaying) {
                         player.pause();
                       } else {

@@ -1,6 +1,19 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+
+AudioHandler? zmrAudioHandlerInstance;
+AudioHandler get zmrAudioHandler {
+  if (zmrAudioHandlerInstance == null) {
+    throw StateError('zmrAudioHandler accessed before initialization in main()');
+  }
+  return zmrAudioHandlerInstance!;
+}
+set zmrAudioHandler(AudioHandler handler) {
+  debugPrint('ZMR [HANDLER]: Setting global instance. Type: ${handler.runtimeType}');
+  zmrAudioHandlerInstance = handler;
+}
 
 class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
@@ -11,13 +24,28 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
 
   ZmrAudioHandler(this._player) {
     // Forward playback state changes
-    _player.playbackEventStream.listen(_broadcastState);
+    _player.playbackEventStream.listen(_broadcastState, onError: (e, stack) {
+      debugPrint('ZMR [HANDLER] Playback Event Error: $e');
+    });
     
     // Handle processing state changes
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         skipToNext();
       }
+      if (state == ProcessingState.idle) {
+        try { WakelockPlus.disable(); } catch (_) {}
+      }
+    });
+
+    _player.playingStream.listen((playing) {
+      try {
+        if (playing) {
+          WakelockPlus.enable();
+        } else {
+          WakelockPlus.disable();
+        }
+      } catch (_) {}
     });
 
     // Update media item with precise duration when available
@@ -54,6 +82,12 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
     if (onPrevious != null) onPrevious!();
   }
 
+  @override
+  Future<void> onTaskRemoved() async {
+    await stop();
+    await super.onTaskRemoved();
+  }
+
   /// Broadcasts the current playback state to audio_service
   void _broadcastState(PlaybackEvent event) {
     final playing = _player.playing;
@@ -71,6 +105,7 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.skipToNext,
         MediaAction.skipToPrevious,
         MediaAction.playPause,
+        MediaAction.stop,
       },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: const {
@@ -79,7 +114,7 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
         ProcessingState.buffering: AudioProcessingState.buffering,
         ProcessingState.ready: AudioProcessingState.ready,
         ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
+      }[_player.processingState] ?? AudioProcessingState.idle,
       playing: playing,
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,

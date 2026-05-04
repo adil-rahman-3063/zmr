@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/music_provider.dart';
 import '../providers/auth_provider.dart';
 import 'settings_page.dart';
+import '../widgets/zmr_snackbar.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -228,9 +229,7 @@ class ProfilePage extends ConsumerWidget {
                       final details = detailsController.text.trim();
                       
                       if (subject.isEmpty || details.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please fill all fields')),
-                        );
+                        ZmrSnackbar.show(context, 'Please fill all fields');
                         return;
                       }
 
@@ -248,15 +247,11 @@ class ProfilePage extends ConsumerWidget {
 
                         if (context.mounted) {
                           Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Bug reported successfully. Thank you!')),
-                          );
+                          ZmrSnackbar.show(context, 'Bug reported successfully. Thank you!');
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to report bug: $e')),
-                          );
+                          ZmrSnackbar.show(context, 'Failed to report bug: $e');
                         }
                       } finally {
                         isSubmitting.value = false;

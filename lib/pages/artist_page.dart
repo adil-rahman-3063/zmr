@@ -7,6 +7,7 @@ import '../models/artist_model.dart';
 import '../models/artist_details.dart';
 import '../providers/music_provider.dart';
 import '../models/song_model.dart';
+import '../widgets/zmr_snackbar.dart';
 
 class ArtistPage extends ConsumerWidget {
   final Artist artist;
@@ -43,9 +44,7 @@ class ArtistPage extends ConsumerWidget {
                               await ref.read(followedArtistsProvider.notifier).toggleFollow(artist);
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error: $e')),
-                                );
+                                ZmrSnackbar.show(context, 'Error: $e');
                               }
                             }
                           },

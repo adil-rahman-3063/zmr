@@ -8,6 +8,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'yt_login_webview.dart';
 import '../main.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/zmr_snackbar.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -153,9 +154,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Login failed: $e')),
-                                );
+                                ZmrSnackbar.show(context, 'Login failed: $e');
                               }
                             }
                           },

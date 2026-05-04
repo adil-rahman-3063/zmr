@@ -6,15 +6,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
-import '../providers/music_provider.dart';
-import '../widgets/squiggly_slider.dart';
-import '../widgets/player_control_button.dart';
-import '../widgets/add_to_playlist_sheet.dart';
-import '../widgets/zmr_snackbar.dart';
-import '../widgets/sleep_timer_sheet.dart';
-import '../models/song_model.dart';
-import '../models/artist_model.dart';
-import 'artist_page.dart';
+import 'package:zmr/providers/music_provider.dart';
+import 'package:zmr/widgets/squiggly_slider.dart';
+import 'package:zmr/widgets/player_control_button.dart';
+import 'package:zmr/widgets/add_to_playlist_sheet.dart';
+import 'package:zmr/widgets/zmr_snackbar.dart';
+import 'package:zmr/widgets/sleep_timer_sheet.dart';
+import 'package:zmr/models/song_model.dart';
+import 'package:zmr/models/artist_model.dart';
+import 'package:zmr/pages/artist_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -27,6 +27,7 @@ class PlayerPage extends ConsumerStatefulWidget {
 class _PlayerPageState extends ConsumerState<PlayerPage> {
   bool _isQueueVisible = false;
   bool _showLyrics = false;
+  Offset _slideOffset = const Offset(0.0, 0.1);
   final ScrollController _lyricsScrollController = ScrollController();
 
   void _hideQueue() {
@@ -329,22 +330,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                       ],
                                     ),
                                   )
-                            : ListView.builder(
-                                controller: scrollController,
-                                itemCount: upNextIndices.length + (playback.isFetchingMore ? 1 : 0),
+                            : ReorderableListView.builder(
+                                scrollController: scrollController,
+                                itemCount: upNextIndices.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  ref.read(playbackProvider.notifier).reorderQueue(oldIndex, newIndex);
+                                },
                                 itemBuilder: (context, i) {
-                                  if (i >= upNextIndices.length) {
-                                    return const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 32.0),
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    );
-                                  }
                                   final songIndex = upNextIndices[i];
                                   final song = queue[songIndex];
                                   final queuePosition = (currentIdx + 1 + i);
+                                  
                                   return ListTile(
+                                    key: ValueKey('queue_${song.id}_$songIndex'),
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                                     leading: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -397,6 +395,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
+                                    ),
+                                    trailing: ReorderableDragStartListener(
+                                      index: i,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Icon(
+                                          Icons.drag_handle, 
+                                          size: 18, 
+                                          color: Theme.of(context).colorScheme.onSurface.withAlpha(100)
+                                        ),
+                                      ),
                                     ),
                                     onTap: () {
                                       _hideQueue();
@@ -466,28 +475,49 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: Stack(
-        children: [
-          // Background blur
-          Positioned.fill(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-              child: Opacity(
-                opacity: 0.5,
-                child: currentSong.thumbnailUrl.startsWith('assets/')
-                    ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
-                    : Image.network(
-                        currentSong.thumbnailUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      ),
+      body: GestureDetector(
+        onVerticalDragEnd: (details) {
+          if (details.primaryVelocity! > 500) {
+            ref.read(isFullPlayerVisibleProvider.notifier).setVisible(false);
+          }
+        },
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity! < -500) {
+            // Swipe Left -> Next
+            setState(() {
+              _slideOffset = const Offset(0.2, 0.0);
+            });
+            ref.read(playbackProvider.notifier).next();
+          } else if (details.primaryVelocity! > 500) {
+            // Swipe Right -> Previous
+            setState(() {
+              _slideOffset = const Offset(-0.2, 0.0);
+            });
+            ref.read(playbackProvider.notifier).previous();
+          }
+        },
+        child: Stack(
+          children: [
+            // Background blur
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                child: Opacity(
+                  opacity: 0.5,
+                  child: currentSong.thumbnailUrl.startsWith('assets/')
+                      ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
+                      : Image.network(
+                          currentSong.thumbnailUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                        ),
+                ),
               ),
             ),
-          ),
-          // Dark overlay
-          Positioned.fill(
-            child: Container(color: Theme.of(context).colorScheme.surface.withAlpha(120)),
-          ),
+            // Dark overlay
+            Positioned.fill(
+              child: Container(color: Theme.of(context).colorScheme.surface.withAlpha(120)),
+            ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -526,6 +556,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         aspectRatio: 1,
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 400),
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: _slideOffset,
+                                  end: Offset.zero,
+                                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                                child: child,
+                              ),
+                            );
+                          },
                           child: _showLyrics
                             ? Container(
                                 key: const ValueKey('lyrics'),
@@ -554,6 +596,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                 ),
                               )
                             : Hero(
+                                key: ValueKey('albumArt_${currentSong.id}'),
                                 tag: 'albumArt_${currentSong.id}',
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(32),
@@ -675,7 +718,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                       SquigglySlider(
                         value: position.inMilliseconds.toDouble().clamp(0, duration.inMilliseconds.toDouble()),
                         max: duration.inMilliseconds == 0 ? 1 : duration.inMilliseconds.toDouble(),
-                        onChanged: (v) => player.seek(Duration(milliseconds: v.toInt())),
+                        onChanged: (v) => player?.seek(Duration(milliseconds: v.toInt())),
                         activeColor: Theme.of(context).colorScheme.primary,
                         inactiveColor: Theme.of(context).colorScheme.primary.withAlpha(30),
                         isPlaying: isPlaying,
@@ -701,7 +744,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.previous,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        onTap: () => ref.read(playbackProvider.notifier).previous(),
+                        onTap: () {
+                          setState(() => _slideOffset = const Offset(-0.2, 0.0));
+                          ref.read(playbackProvider.notifier).previous();
+                        },
                       ),
                       const SizedBox(width: 24),
                       PlayerControlButton(
@@ -711,14 +757,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         iconColor: Theme.of(context).colorScheme.onPrimary,
                         borderRadius: 28,
                         isLoading: isLoading,
-                        onTap: () => isPlaying ? player.pause() : player.play(),
+                        onTap: () => isPlaying ? player?.pause() : player?.play(),
                       ),
                       const SizedBox(width: 24),
                       PlayerControlButton(
                         icon: Iconsax.next,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        onTap: () => ref.read(playbackProvider.notifier).next(),
+                        onTap: () {
+                          setState(() => _slideOffset = const Offset(0.2, 0.0));
+                          ref.read(playbackProvider.notifier).next();
+                        },
                       ),
                     ],
                   ),
@@ -862,6 +911,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

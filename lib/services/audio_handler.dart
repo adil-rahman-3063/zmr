@@ -31,7 +31,15 @@ class ZmrAudioHandler extends BaseAudioHandler with SeekHandler {
     // Handle processing state changes
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
-        skipToNext();
+        // Only skip if we've actually played the song (avoid skipping on errors/empty URLs)
+        final pos = _player.position;
+        final dur = _player.duration;
+        if (dur != null && pos >= dur - const Duration(seconds: 2)) {
+          debugPrint('ZMR [HANDLER]: Song completed naturally. Skipping to next.');
+          skipToNext();
+        } else {
+          debugPrint('ZMR [HANDLER]: Song completed PREMATURELY (pos: $pos, dur: $dur). Not auto-skipping.');
+        }
       }
       if (state == ProcessingState.idle) {
         try { WakelockPlus.disable(); } catch (_) {}

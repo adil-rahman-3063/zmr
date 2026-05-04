@@ -214,10 +214,14 @@ class PlaybackState {
     this.isRepeat = false,
     this.isRepeatOne = false,
     this.isFetchingMore = false,
+    this.isSwitchingTrack = false,
+    this.consecutiveFailures = 0,
     this.originPlaylistId,
   });
 
   final bool isFetchingMore;
+  final bool isSwitchingTrack; // New flag
+  final int consecutiveFailures; // New counter
   final String? originPlaylistId;
 
   Song? get currentSong => (currentIndex >= 0 && currentIndex < playlistOrder.length) 
@@ -232,6 +236,8 @@ class PlaybackState {
     bool? isRepeat,
     bool? isRepeatOne,
     bool? isFetchingMore,
+    bool? isSwitchingTrack,
+    int? consecutiveFailures,
     String? originPlaylistId,
   }) {
     return PlaybackState(
@@ -242,6 +248,8 @@ class PlaybackState {
       isRepeat: isRepeat ?? this.isRepeat,
       isRepeatOne: isRepeatOne ?? this.isRepeatOne,
       isFetchingMore: isFetchingMore ?? this.isFetchingMore,
+      isSwitchingTrack: isSwitchingTrack ?? this.isSwitchingTrack,
+      consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
       originPlaylistId: originPlaylistId ?? this.originPlaylistId,
     );
   }
@@ -259,7 +267,15 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       }
     } catch (_) {}
     
-    return PlaybackState(queue: [], playlistOrder: [], currentIndex: -1, isFetchingMore: false, originPlaylistId: null);
+    return PlaybackState(
+      queue: [], 
+      playlistOrder: [], 
+      currentIndex: -1, 
+      isFetchingMore: false, 
+      isSwitchingTrack: false,
+      consecutiveFailures: 0,
+      originPlaylistId: null
+    );
   }
 
   List<int> _generateSmartShuffle(List<Song> currentQueue, int startIndex) {
@@ -531,23 +547,32 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
   }
 
   Future<void> _playCurrent() async {
+    if (state.isSwitchingTrack) {
+      debugPrint('ZMR [PLAY]: Already switching track, ignoring request.');
+      return;
+    }
+
     final song = state.currentSong;
     if (song == null) return;
+    
     debugPrint('ZMR [PLAY]: Attempting to play ${song.title}');
     final player = ref.read(musicPlayerProvider);
     if (player == null) {
       debugPrint('ZMR [PLAY] ABORT: musicPlayerProvider returned null');
       return;
     }
+
     final ytService = ref.read(youtubeServiceProvider);
     final handler = zmrAudioHandlerInstance as ZmrAudioHandler;
+
+    state = state.copyWith(isSwitchingTrack: true);
 
     try {
       // 1. Prepare for transition
       await player.stop();
       await player.seek(Duration.zero);
 
-      // 2. IMMEDIATELY update metadata so the notification stays visible with the new song info
+      // 2. IMMEDIATELY update metadata for UI responsiveness
       handler.updateMetadata(
         MediaItem(
           id: song.id,
@@ -558,56 +583,65 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         ),
       );
 
-      debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id}...');
-      final streamUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 10));
-      debugPrint('ZMR [PLAY]: Stream URL obtained (length: ${streamUrl.length})');
-      
-      await player.setAudioSource(AudioSource.uri(
-        Uri.parse(streamUrl),
-        tag: MediaItem(
-          id: song.id,
-          album: song.artist,
-          title: song.title,
-          artist: song.artist,
-          artUri: Uri.parse(song.thumbnailUrl),
-        ),
-      ));
-
-      // 3. Broadcast LOADING state
+      // 3. Broadcast LOADING state to the system
       handler.broadcastLoading();
 
       // 4. Fetch URL with timeout/retry logic
       String? playUrl;
       int retries = 0;
-      while (retries < 2) {
+      Exception? lastError;
+
+      while (retries < 3) {
         try {
+          debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id} (Attempt ${retries + 1})...');
           playUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 15));
-          if (playUrl.isNotEmpty) break;
+          if (playUrl != null && playUrl.isNotEmpty) break;
         } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
           retries++;
-          if (retries >= 2) rethrow;
-          await Future.delayed(const Duration(seconds: 1));
+          debugPrint('ZMR [PLAY]: Attempt $retries failed: $e');
+          if (retries < 3) await Future.delayed(Duration(seconds: retries));
         }
       }
 
-      if (playUrl == null || playUrl.isEmpty) throw Exception('Failed to resolve stream URL');
+      if (playUrl == null || playUrl.isEmpty) {
+        throw lastError ?? Exception('Failed to resolve stream URL for ${song.id}');
+      }
       
-      // 5. Configure session
+      debugPrint('ZMR [PLAY]: Stream URL obtained. Configuring session...');
+
+      // 5. Configure audio session
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
       await session.setActive(true);
 
+      // 6. Set Player Options
       final settings = ref.read(settingsProvider);
-      player.setVolume(settings.normalizeVolume ? 0.7 : 1.0);
-      
-      await player.setUrl(playUrl);
+      await player.setVolume(settings.normalizeVolume ? 0.7 : 1.0);
       await player.setLoopMode(state.isRepeatOne ? LoopMode.one : LoopMode.off);
+
+      // 7. LOAD AND PLAY
+      await player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(playUrl),
+          tag: MediaItem(
+            id: song.id,
+            album: song.artist,
+            title: song.title,
+            artist: song.artist,
+            artUri: Uri.parse(song.thumbnailUrl),
+          ),
+        ),
+        preload: true,
+      );
+
+      debugPrint('ZMR [PLAY]: Audio source set. Starting playback.');
       
       if (settings.crossfadeSeconds > 0) {
         player.setVolume(0);
         player.play();
         final targetVolume = settings.normalizeVolume ? 0.7 : 1.0;
-        final steps = 10;
+        const steps = 10;
         final stepDuration = Duration(milliseconds: (settings.crossfadeSeconds * 1000 / steps).toInt());
         for (int i = 1; i <= steps; i++) {
           await Future.delayed(stepDuration);
@@ -617,12 +651,27 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         await player.play(); 
       }
 
+      // Success! Reset failure counter
+      state = state.copyWith(isSwitchingTrack: false, consecutiveFailures: 0);
       _checkAndExtendQueue();
+      
     } catch (e) {
-      debugPrint('ZMR Playback Error: $e');
-      // Auto-recovery: If a song fails, wait and try next
-      await Future.delayed(const Duration(seconds: 2));
-      if (state.queue.isNotEmpty) {
+      debugPrint('ZMR [PLAY] CRITICAL ERROR: $e');
+      
+      final failures = state.consecutiveFailures + 1;
+      state = state.copyWith(isSwitchingTrack: false, consecutiveFailures: failures);
+
+      if (failures >= 5) {
+        debugPrint('ZMR [PLAY]: Too many consecutive failures ($failures). Stopping auto-skip.');
+        // Notify user via handler or just stop
+        return;
+      }
+
+      // Auto-recovery: If a song fails, wait a bit and try the next one
+      await Future.delayed(const Duration(seconds: 3));
+      
+      if (state.currentSong?.id == song.id && state.queue.isNotEmpty) {
+        debugPrint('ZMR [PLAY]: Auto-skipping to next after error (Failures: $failures).');
         next();
       }
     }

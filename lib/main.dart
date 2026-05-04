@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'core/app_theme.dart';
-import 'core/supabase_config.dart';
-import 'providers/settings_provider.dart';
-import 'providers/music_provider.dart';
-import 'providers/auth_provider.dart';
-import 'pages/login_page.dart';
-import 'pages/home_page.dart';
-import 'pages/player_page.dart';
-import 'widgets/mini_player.dart';
-import 'widgets/frosted_nav_bar.dart';
+import 'package:zmr/core/app_theme.dart';
+import 'package:zmr/core/supabase_config.dart';
+import 'package:zmr/providers/settings_provider.dart';
+import 'package:zmr/providers/music_provider.dart';
+import 'package:zmr/providers/auth_provider.dart';
+import 'package:zmr/pages/login_page.dart';
+import 'package:zmr/pages/home_page.dart';
+import 'package:zmr/pages/player_page.dart';
+import 'package:zmr/widgets/mini_player.dart';
+import 'package:zmr/widgets/frosted_nav_bar.dart';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
-import 'services/audio_handler.dart';
+import 'package:zmr/services/audio_handler.dart';
 import 'package:just_audio/just_audio.dart';
 
-late AudioHandler zmrAudioHandler;
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -39,16 +39,16 @@ void main() async {
         );
         return ZmrAudioHandler(player);
       },
-      config: const AudioServiceConfig(
+      config: AudioServiceConfig(
         androidNotificationChannelId: 'com.example.zmr.channel.audio',
         androidNotificationChannelName: 'Music Playback',
         androidNotificationIcon: 'mipmap/launcher_icon',
         androidNotificationOngoing: true,
         androidStopForegroundOnPause: true,
-        notificationColor: Color(0xFF121212),
+        notificationColor: const Color(0xFF121212),
       ),
     );
-    debugPrint('ZMR [BOOT]: AudioService initialized successfully.');
+    debugPrint('ZMR [BOOT]: AudioService initialized. zmrAudioHandlerInstance is: $zmrAudioHandlerInstance');
   } catch (e) {
     debugPrint('ZMR [BOOT] CRITICAL: AudioService failed to initialize: $e');
     // Fallback or handle error - though AudioService is usually required for this app's architecture now
@@ -155,10 +155,28 @@ class _ZmrAppShell extends ConsumerWidget {
     final isShellVisible = shellOverride;
     debugPrint('ZMR [SHELL]: Visibility: $isShellVisible (Override: $shellOverride)');
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      body: Stack(
-        children: [
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        
+        if (isFullPlayerVisible) {
+          ref.read(isFullPlayerVisibleProvider.notifier).setVisible(false);
+          return;
+        }
+
+        final nav = ref.read(navigatorKeyProvider).currentState;
+        if (nav != null && nav.canPop()) {
+          nav.pop();
+        } else {
+          // No more internal routes to pop, exit app/minimize
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: Stack(
+          children: [
           // Main Content with padding for the floating bar
           Padding(
             padding: EdgeInsets.only(bottom: isShellVisible ? 110 : 0),
@@ -191,8 +209,9 @@ class _ZmrAppShell extends ConsumerWidget {
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _StackedBottomShell extends ConsumerStatefulWidget {

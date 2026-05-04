@@ -8,20 +8,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/song_model.dart';
-import '../models/playlist_model.dart';
-import '../models/artist_model.dart';
-import '../models/home_feed.dart';
-import '../providers/music_provider.dart';
-import 'playlist_page.dart';
-import 'profile_page.dart';
-import 'artist_page.dart';
-import 'settings_page.dart';
-import '../providers/auth_provider.dart';
-import '../widgets/add_to_playlist_sheet.dart';
-import '../widgets/zmr_snackbar.dart';
-import '../main.dart';
-import 'yt_login_webview.dart';
+import 'package:zmr/models/song_model.dart';
+import 'package:zmr/models/playlist_model.dart';
+import 'package:zmr/models/artist_model.dart';
+import 'package:zmr/models/home_feed.dart';
+import 'package:zmr/providers/music_provider.dart';
+import 'package:zmr/pages/playlist_page.dart';
+import 'package:zmr/pages/profile_page.dart';
+import 'package:zmr/pages/artist_page.dart';
+import 'package:zmr/widgets/add_to_playlist_sheet.dart';
+import 'package:zmr/widgets/zmr_snackbar.dart';
+import 'package:zmr/pages/yt_login_webview.dart';
+import 'package:zmr/main.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -159,13 +157,13 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
               const SizedBox(height: 12),
               ElevatedButton(
-                onPressed: () => showCookieInputDialog(context, ref),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YtLoginWebview())),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.errorContainer.withAlpha(150),
                   foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
                   elevation: 0,
                 ),
-                child: Text(isAuth ? 'Update Cookies' : 'Retry Connection'),
+                child: Text(isAuth ? 'Update Login' : 'Retry Connection'),
               ),
             ],
           ),
@@ -771,124 +769,18 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
-                  onPressed: () => showCookieInputDialog(context, ref),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YtLoginWebview())),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.errorContainer.withAlpha(150),
                     foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
                   ),
-                  child: Text(isAuth ? 'Update Cookies' : 'Retry Connection'),
+                  child: Text(isAuth ? 'Update Login' : 'Retry Connection'),
                 ),
               ],
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildProfileContent() {
-    final user = ref.watch(currentUserProvider);
-    if (user == null) {
-      return Center(
-        child: Text(
-          'Not signed in',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface),
-        ),
-      );
-    }
-
-    final String? avatarUrl = user.userMetadata?['avatar_url'];
-    final String fullName = user.userMetadata?['full_name'] ?? 'Guest User';
-
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        children: [
-          const SizedBox(height: 40),
-          Text(
-            'Profile',
-            style: GoogleFonts.outfit(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 60),
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Theme.of(context).colorScheme.onSurface.withAlpha(30), width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 60,
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                    child: avatarUrl == null
-                        ? Icon(Iconsax.user, size: 40, color: Theme.of(context).colorScheme.onSurface)
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  fullName,
-                  style: GoogleFonts.outfit(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  user.email ?? '',
-                  style: GoogleFonts.outfit(
-                    fontSize: 16,
-                    color: Theme.of(context).colorScheme.onSurface.withAlpha(150),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 48),
-          const _CookieSettingsTile(),
-          const SizedBox(height: 48),
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton(
-                onPressed: () => ref.read(authServiceProvider).signOut(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error.withAlpha(30),
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: Theme.of(context).colorScheme.error.withAlpha(100)),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Iconsax.logout_1, size: 22),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Sign Out',
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 120),
-          ],
-        ),
     );
   }
 
@@ -912,105 +804,6 @@ class _HomePageState extends ConsumerState<HomePage> {
 }
 
 
-void showCookieInputDialog(BuildContext context, WidgetRef ref) {
-  final controller = TextEditingController();
-  showModalBottomSheet(
-    useRootNavigator: true,
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-    ),
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        left: 24, right: 24, top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Connect YouTube Music',
-            style: GoogleFonts.outfit(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Paste your YouTube cookies here (risky approach).',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(150), fontSize: 13),
-          ),
-          const SizedBox(height: 24),
-          TextField(
-            controller: controller,
-            maxLines: 5,
-            autofocus: true,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12),
-            decoration: InputDecoration(
-              hintText: 'SID=...; HSID=...; SAPISID=...;',
-              hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(150),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(150))),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: ValueNotifier<bool>(false), // Placeholder, I'll use a local state
-                  builder: (context, loading, _) => ElevatedButton(
-                    onPressed: () async {
-                      final cookies = controller.text.trim();
-                      if (cookies.isEmpty) return;
-                      
-                      ref.read(youtubeCookieProvider.notifier).setCookies(cookies);
-                      
-                      // Test the connection immediately
-                      final isValid = await ref.read(youtubeServiceProvider).testAuth();
-                      
-                      if (context.mounted) {
-                        if (isValid) {
-                          ZmrSnackbar.show(context, 'Successfully connected to YouTube Music!');
-                          Navigator.pop(context);
-                        } else {
-                          ZmrSnackbar.show(context, 'Failed to connect. Please check your cookies.');
-                          // Keep the dialog open for correction
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text('Connect'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
 
 
 class _ArtistListItem extends StatelessWidget {
@@ -1719,48 +1512,6 @@ class _SongCard extends ConsumerWidget {
 
 
 
-class _CookieSettingsTile extends ConsumerWidget {
-  const _CookieSettingsTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withAlpha(20)),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withAlpha(30),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Iconsax.setting_2,
-            color: Theme.of(context).colorScheme.primary,
-            size: 28,
-          ),
-        ),
-        title: Text(
-          'YouTube Music Cookies',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          'Manage your authentication tokens',
-          style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurface.withAlpha(180), fontSize: 13),
-        ),
-        trailing: Icon(Iconsax.arrow_right_3, color: Theme.of(context).colorScheme.onSurface.withAlpha(128)),
-        onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
-        },
-      ),
-    );
-  }
-}
 
 
 class _ArtistCard extends StatelessWidget {
@@ -1910,7 +1661,7 @@ class _ConnectLibraryCTA extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () => showCookieInputDialog(context, ref),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YtLoginWebview())),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,

@@ -6,20 +6,19 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart';
-import '../services/audio_handler.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:math';
-import '../models/song_model.dart';
-import '../models/playlist_model.dart';
-
-import '../models/home_feed.dart';
-import '../models/home_chip.dart';
-import '../models/search_response.dart';
-import '../models/lyrics_model.dart';
-import '../models/artist_model.dart';
-import '../models/artist_details.dart';
-import '../services/youtube_service.dart';
-import 'settings_provider.dart';
+import 'package:zmr/services/audio_handler.dart';
+import 'package:zmr/models/song_model.dart';
+import 'package:zmr/models/playlist_model.dart';
+import 'package:zmr/models/home_feed.dart';
+import 'package:zmr/models/home_chip.dart';
+import 'package:zmr/models/search_response.dart';
+import 'package:zmr/models/lyrics_model.dart';
+import 'package:zmr/models/artist_model.dart';
+import 'package:zmr/models/artist_details.dart';
+import 'package:zmr/services/youtube_service.dart';
+import 'package:zmr/providers/settings_provider.dart';
 
 
 // Provider for managing global bottom navigation index
@@ -145,29 +144,50 @@ final youtubeServiceProvider = Provider((ref) {
 
 
 
-final musicPlayerProvider = Provider<AudioPlayer>((ref) {
-  // Use the player instance managed by our ZmrAudioHandler for background support
-  return (zmrAudioHandler as ZmrAudioHandler).internalPlayer;
+final musicPlayerProvider = Provider<AudioPlayer?>((ref) {
+  try {
+    final h = zmrAudioHandlerInstance;
+    if (h != null) {
+      if (h is ZmrAudioHandler) {
+        return h.internalPlayer;
+      } else {
+        debugPrint('ZMR [DEBUG]: Global Handler is NOT ZmrAudioHandler. It is ${h.runtimeType}');
+      }
+    } else {
+      debugPrint('ZMR [DEBUG]: zmrAudioHandlerInstance is NULL');
+    }
+  } catch (e) {
+    debugPrint('ZMR [DEBUG]: musicPlayerProvider error: $e');
+  }
+  return null;
 });
 
-final audioHandlerProvider = Provider<AudioHandler>((ref) {
-  return zmrAudioHandler;
+final audioHandlerProvider = Provider<AudioHandler?>((ref) {
+  return zmrAudioHandlerInstance;
 });
 
 final playerProcessingStateProvider = StreamProvider<ProcessingState>((ref) {
-  return ref.watch(musicPlayerProvider).processingStateStream;
+  final player = ref.watch(musicPlayerProvider);
+  if (player == null) return const Stream.empty();
+  return player.processingStateStream;
 });
 
 final playerPositionProvider = StreamProvider<Duration>((ref) {
-  return ref.watch(musicPlayerProvider).positionStream;
+  final player = ref.watch(musicPlayerProvider);
+  if (player == null) return const Stream.empty();
+  return player.positionStream;
 });
 
 final playerDurationProvider = StreamProvider<Duration?>((ref) {
-  return ref.watch(musicPlayerProvider).durationStream;
+  final player = ref.watch(musicPlayerProvider);
+  if (player == null) return const Stream.empty();
+  return player.durationStream;
 });
 
 final playerBufferedPositionProvider = StreamProvider<Duration>((ref) {
-  return ref.watch(musicPlayerProvider).bufferedPositionStream;
+  final player = ref.watch(musicPlayerProvider);
+  if (player == null) return const Stream.empty();
+  return player.bufferedPositionStream;
 });
 
 class CurrentSongNotifier extends Notifier<Song?> {
@@ -231,9 +251,13 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
   @override
   PlaybackState build() {
     // Connect audio handler callbacks to this notifier's methods
-    final handler = zmrAudioHandler as ZmrAudioHandler;
-    handler.onNext = () => next();
-    handler.onPrevious = () => previous();
+    try {
+      final h = zmrAudioHandlerInstance;
+      if (h is ZmrAudioHandler) {
+        h.onNext = () => next();
+        h.onPrevious = () => previous();
+      }
+    } catch (_) {}
     
     return PlaybackState(queue: [], playlistOrder: [], currentIndex: -1, isFetchingMore: false, originPlaylistId: null);
   }
@@ -436,13 +460,13 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     final player = ref.read(musicPlayerProvider);
     if (state.isRepeatOne) {
       state = state.copyWith(isRepeat: false, isRepeatOne: false);
-      player.setLoopMode(LoopMode.off);
+      player?.setLoopMode(LoopMode.off);
     } else if (state.isRepeat) {
       state = state.copyWith(isRepeat: true, isRepeatOne: true);
-      player.setLoopMode(LoopMode.one);
+      player?.setLoopMode(LoopMode.one);
     } else {
       state = state.copyWith(isRepeat: true, isRepeatOne: false);
-      player.setLoopMode(LoopMode.off);
+      player?.setLoopMode(LoopMode.all);
     }
   }
 
@@ -474,7 +498,6 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     await _playCurrent();
   }
 
-  /// Jump directly to a specific position in the play order
   Future<void> jumpTo(int orderIndex) async {
     if (state.queue.isEmpty) return;
     final clampedIndex = orderIndex.clamp(0, state.playlistOrder.length - 1);
@@ -482,71 +505,126 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     await _playCurrent();
   }
 
+  void reorderQueue(int oldIndex, int newIndex) {
+    if (state.queue.isEmpty) return;
+    
+    // Calculate the actual indices in the playlistOrder list
+    // The list in the UI starts at currentIndex + 1
+    final offset = state.currentIndex + 1;
+    final realOldIndex = oldIndex + offset;
+    int realNewIndex = newIndex + offset;
+
+    if (realOldIndex < 0 || realOldIndex >= state.playlistOrder.length) return;
+    if (realNewIndex < 0) realNewIndex = 0;
+    if (realNewIndex > state.playlistOrder.length) realNewIndex = state.playlistOrder.length;
+
+    final newOrder = List<int>.from(state.playlistOrder);
+    final item = newOrder.removeAt(realOldIndex);
+    
+    // If we're moving down, adjusting the target index because removeAt shifted everything
+    if (realNewIndex > realOldIndex) {
+      realNewIndex -= 1;
+    }
+    
+    newOrder.insert(realNewIndex, item);
+    state = state.copyWith(playlistOrder: newOrder);
+  }
+
   Future<void> _playCurrent() async {
     final song = state.currentSong;
     if (song == null) return;
+    debugPrint('ZMR [PLAY]: Attempting to play ${song.title}');
     final player = ref.read(musicPlayerProvider);
+    if (player == null) {
+      debugPrint('ZMR [PLAY] ABORT: musicPlayerProvider returned null');
+      return;
+    }
     final ytService = ref.read(youtubeServiceProvider);
-    final handler = zmrAudioHandler as ZmrAudioHandler;
+    final handler = zmrAudioHandlerInstance as ZmrAudioHandler;
 
     try {
-      // 0. STOP THE OLD SONG IMMEDIATELY to prevent it from playing while fetching the new URL
+      // 1. Prepare for transition
       await player.stop();
       await player.seek(Duration.zero);
 
-      // 1. IMMEDIATELY update metadata so the notification stays visible with the new song info
+      // 2. IMMEDIATELY update metadata so the notification stays visible with the new song info
       handler.updateMetadata(
         MediaItem(
           id: song.id,
-          album: 'YouTube Music',
+          album: song.artist,
           title: song.title,
           artist: song.artist,
-          duration: _parseDuration(song.duration),
           artUri: Uri.parse(song.thumbnailUrl),
         ),
       );
 
-      // 2. Broadcast LOADING state so lockscreen/notification shows sync with the change
+      debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id}...');
+      final streamUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 10));
+      debugPrint('ZMR [PLAY]: Stream URL obtained (length: ${streamUrl.length})');
+      
+      await player.setAudioSource(AudioSource.uri(
+        Uri.parse(streamUrl),
+        tag: MediaItem(
+          id: song.id,
+          album: song.artist,
+          title: song.title,
+          artist: song.artist,
+          artUri: Uri.parse(song.thumbnailUrl),
+        ),
+      ));
+
+      // 3. Broadcast LOADING state
       handler.broadcastLoading();
 
-      // 3. Fetch URL in the background
-      final playUrl = await ytService.getDirectStreamUrl(song.id);
+      // 4. Fetch URL with timeout/retry logic
+      String? playUrl;
+      int retries = 0;
+      while (retries < 2) {
+        try {
+          playUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 15));
+          if (playUrl.isNotEmpty) break;
+        } catch (e) {
+          retries++;
+          if (retries >= 2) rethrow;
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
+
+      if (playUrl == null || playUrl.isEmpty) throw Exception('Failed to resolve stream URL');
       
-      // 3. Configure session and switch URL
+      // 5. Configure session
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
       await session.setActive(true);
 
       final settings = ref.read(settingsProvider);
-      
-      // Implement Normalize Volume: if enabled, we cap the volume at 0.7 to avoid loudness peaks
       player.setVolume(settings.normalizeVolume ? 0.7 : 1.0);
-      
-      // Implement Gapless/Smooth transition: just_audio handles this well when setUrl is called
-      // If Crossfade is enabled, we could potentially do a fade out of the PREVIOUS song,
-      // but since we only have one player, we'll focus on a smooth start.
       
       await player.setUrl(playUrl);
       await player.setLoopMode(state.isRepeatOne ? LoopMode.one : LoopMode.off);
       
       if (settings.crossfadeSeconds > 0) {
-        // Simple fade-in effect for crossfade
         player.setVolume(0);
         player.play();
         final targetVolume = settings.normalizeVolume ? 0.7 : 1.0;
-        final step = targetVolume / 10;
-        for (int i = 1; i <= 10; i++) {
-          await Future.delayed(Duration(milliseconds: (settings.crossfadeSeconds * 100).toInt()));
-          player.setVolume(step * i);
+        final steps = 10;
+        final stepDuration = Duration(milliseconds: (settings.crossfadeSeconds * 1000 / steps).toInt());
+        for (int i = 1; i <= steps; i++) {
+          await Future.delayed(stepDuration);
+          player.setVolume((targetVolume / steps) * i);
         }
       } else {
         await player.play(); 
       }
 
-      // If we are getting near the end of the current queue, fetch related songs
       _checkAndExtendQueue();
     } catch (e) {
       debugPrint('ZMR Playback Error: $e');
+      // Auto-recovery: If a song fails, wait and try next
+      await Future.delayed(const Duration(seconds: 2));
+      if (state.queue.isNotEmpty) {
+        next();
+      }
     }
   }
 }
@@ -557,7 +635,7 @@ final currentSongProvider = NotifierProvider<CurrentSongNotifier, Song?>(Current
 
 final isPlayingProvider = StreamProvider<bool>((ref) {
   final player = ref.watch(musicPlayerProvider);
-  return player.playingStream;
+  return player?.playingStream ?? const Stream.empty();
 });
 
 class MusicNotifier extends Notifier<SearchResponse> {
@@ -858,7 +936,7 @@ class SleepTimerNotifier extends Notifier<Duration?> {
         timer.cancel();
         state = null;
         // Auto-pause playback when timer hits 0
-        ref.read(musicPlayerProvider).pause();
+        ref.read(musicPlayerProvider)?.pause();
       } else {
         state = state! - const Duration(seconds: 1);
       }

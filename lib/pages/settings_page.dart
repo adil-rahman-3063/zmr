@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../providers/settings_provider.dart';
 import 'yt_login_webview.dart';
-import 'cookie_instructions_page.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -73,16 +72,6 @@ class SettingsPage extends ConsumerWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const YtLoginWebview()),
-            ),
-          ),
-          _buildActionTile(
-            context: context,
-            icon: Iconsax.info_circle,
-            title: 'Cookie Instructions',
-            subtitle: 'Learn how to get auth cookies manually',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CookieInstructionsPage()),
             ),
           ),
           const SizedBox(height: 32),

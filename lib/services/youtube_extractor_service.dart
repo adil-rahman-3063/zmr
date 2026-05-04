@@ -285,15 +285,22 @@ class YouTubeExtractorService {
 
   Future<bool> _validateStream(String url) async {
     try {
-      final response = await _dio.head(url, options: Options(
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        sendTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5)
-      ));
+      final response = await _dio.get(
+        url, 
+        options: Options(
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Range': 'bytes=0-1', // Just fetch the first 2 bytes to verify the link works
+          },
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+          validateStatus: (status) => status != null && status < 400,
+        )
+      );
+      // Status 200 or 206 (Partial Content) are both fine
       return response.statusCode == 200 || response.statusCode == 206;
     } catch (e) {
+      debugPrint('ZMR [EXTRACTOR]: Stream validation failed: $e');
       return false;
     }
   }

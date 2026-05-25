@@ -182,7 +182,45 @@ class ArtistPage extends ConsumerWidget {
               child: Center(child: Text('Error: $e')),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 60)),
+          Consumer(
+            builder: (context, ref, child) {
+              final newReleasesAsync = ref.watch(artistNewReleasesProvider(artist.id));
+              return newReleasesAsync.when(
+                data: (newReleases) {
+                  if (newReleases.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                  return SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _SectionHeader(title: 'Recently Added'),
+                        SizedBox(
+                          height: 220,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            itemCount: newReleases.length,
+                            itemBuilder: (context, index) {
+                              final song = newReleases[index];
+                              return _HorizontalSongCard(
+                                song: song,
+                                onTap: () {
+                                  ref.read(playbackProvider.notifier).setQueue(newReleases, initialIndex: index);
+                                },
+                              ).animate().fade(delay: (index * 50).ms).scale(begin: const Offset(0.9, 0.9));
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+                error: (e, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+              );
+            },
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 150)),
         ],
       ),
     );

@@ -29,6 +29,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   bool _showLyrics = false;
   Offset _slideOffset = const Offset(0.0, 0.1);
   final ScrollController _lyricsScrollController = ScrollController();
+  bool _isPrevLoading = false;
+  bool _isNextLoading = false;
 
   void _hideQueue() {
     setState(() {
@@ -233,7 +235,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         : <int>[];
     final upNextIndices = allUpNext;
 
-    return DraggableScrollableSheet(
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: (notification) {
+        if (notification.extent <= notification.minExtent + 0.01) {
+          _hideQueue();
+        }
+        return true;
+      },
+      child: DraggableScrollableSheet(
           initialChildSize: 0.6,
           maxChildSize: 0.9,
           minChildSize: 0.4,
@@ -421,7 +430,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               ),
             );
           },
-        );
+        ),
+    );
   }
 
   @override
@@ -478,7 +488,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       body: GestureDetector(
         onVerticalDragEnd: (details) {
           if (details.primaryVelocity! > 500) {
-            ref.read(isFullPlayerVisibleProvider.notifier).setVisible(false);
+            if (_isQueueVisible) {
+              _hideQueue();
+            } else if (_showLyrics) {
+              setState(() => _showLyrics = false);
+            } else {
+              ref.read(isFullPlayerVisibleProvider.notifier).setVisible(false);
+            }
           }
         },
         onHorizontalDragEnd: (details) {
@@ -744,9 +760,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.previous,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        onTap: () {
-                          setState(() => _slideOffset = const Offset(-0.2, 0.0));
-                          ref.read(playbackProvider.notifier).previous();
+                        isLoading: _isPrevLoading,
+                        onTap: () async {
+                          setState(() {
+                            _slideOffset = const Offset(-0.2, 0.0);
+                            _isPrevLoading = true;
+                          });
+                          await ref.read(playbackProvider.notifier).previous();
+                          if (mounted) setState(() => _isPrevLoading = false);
                         },
                       ),
                       const SizedBox(width: 24),
@@ -764,9 +785,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.next,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        onTap: () {
-                          setState(() => _slideOffset = const Offset(0.2, 0.0));
-                          ref.read(playbackProvider.notifier).next();
+                        isLoading: _isNextLoading,
+                        onTap: () async {
+                          setState(() {
+                            _slideOffset = const Offset(0.2, 0.0);
+                            _isNextLoading = true;
+                          });
+                          await ref.read(playbackProvider.notifier).next();
+                          if (mounted) setState(() => _isNextLoading = false);
                         },
                       ),
                     ],

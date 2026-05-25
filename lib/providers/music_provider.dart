@@ -6,7 +6,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'package:zmr/services/audio_handler.dart';
 import 'package:zmr/models/song_model.dart';
@@ -206,6 +205,12 @@ class PlaybackState {
   final bool isRepeat;
   final bool isRepeatOne;
 
+  final bool isFetchingMore;
+  final bool isSwitchingTrack; // New flag
+  final int consecutiveFailures; // New counter
+  final String? originPlaylistId;
+  final int savedPositionMs; // New field for caching
+
   PlaybackState({
     required this.queue,
     required this.playlistOrder,
@@ -217,12 +222,34 @@ class PlaybackState {
     this.isSwitchingTrack = false,
     this.consecutiveFailures = 0,
     this.originPlaylistId,
+    this.savedPositionMs = 0,
   });
 
-  final bool isFetchingMore;
-  final bool isSwitchingTrack; // New flag
-  final int consecutiveFailures; // New counter
-  final String? originPlaylistId;
+  Map<String, dynamic> toMap() {
+    return {
+      'queue': queue.map((x) => x.toMap()).toList(),
+      'playlistOrder': playlistOrder,
+      'currentIndex': currentIndex,
+      'isShuffle': isShuffle,
+      'isRepeat': isRepeat,
+      'isRepeatOne': isRepeatOne,
+      'originPlaylistId': originPlaylistId,
+      'savedPositionMs': savedPositionMs,
+    };
+  }
+
+  factory PlaybackState.fromMap(Map<String, dynamic> map) {
+    return PlaybackState(
+      queue: List<Song>.from(map['queue']?.map((x) => Song.fromMap(x)) ?? []),
+      playlistOrder: List<int>.from(map['playlistOrder'] ?? []),
+      currentIndex: map['currentIndex']?.toInt() ?? -1,
+      isShuffle: map['isShuffle'] ?? false,
+      isRepeat: map['isRepeat'] ?? false,
+      isRepeatOne: map['isRepeatOne'] ?? false,
+      originPlaylistId: map['originPlaylistId'],
+      savedPositionMs: map['savedPositionMs']?.toInt() ?? 0,
+    );
+  }
 
   Song? get currentSong => (currentIndex >= 0 && currentIndex < playlistOrder.length) 
       ? queue[playlistOrder[currentIndex]] 
@@ -239,6 +266,7 @@ class PlaybackState {
     bool? isSwitchingTrack,
     int? consecutiveFailures,
     String? originPlaylistId,
+    int? savedPositionMs,
   }) {
     return PlaybackState(
       queue: queue ?? this.queue,
@@ -251,11 +279,15 @@ class PlaybackState {
       isSwitchingTrack: isSwitchingTrack ?? this.isSwitchingTrack,
       consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
       originPlaylistId: originPlaylistId ?? this.originPlaylistId,
+      savedPositionMs: savedPositionMs ?? this.savedPositionMs,
     );
   }
 }
 
 class PlaybackNotifier extends Notifier<PlaybackState> {
+  static const _cacheKey = 'zmr_playback_state_cache';
+  Timer? _saveTimer;
+
   @override
   PlaybackState build() {
     // Connect audio handler callbacks to this notifier's methods
@@ -266,16 +298,121 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         h.onPrevious = () => previous();
       }
     } catch (_) {}
-    
-    return PlaybackState(
+
+    // Load from cache or default
+    PlaybackState initialState = PlaybackState(
       queue: [], 
       playlistOrder: [], 
       currentIndex: -1, 
-      isFetchingMore: false, 
-      isSwitchingTrack: false,
-      consecutiveFailures: 0,
-      originPlaylistId: null
     );
+    
+    try {
+      final prefs = ref.watch(sharedPreferencesProvider);
+      final cachedStr = prefs.getString(_cacheKey);
+      if (cachedStr != null) {
+        initialState = PlaybackState.fromMap(jsonDecode(cachedStr));
+        
+        // Restore player state silently (queue up but don't play)
+        if (initialState.currentSong != null) {
+          Future.microtask(() => _restorePlayerSilently(initialState));
+        }
+      }
+    } catch (e) {
+      debugPrint('ZMR [CACHE]: Failed to load playback state: $e');
+    }
+
+    // Listen to position stream to debounce save position
+    Future.microtask(() {
+      final player = ref.read(musicPlayerProvider);
+      if (player != null) {
+        final sub = player.positionStream.listen((pos) {
+          final posMs = pos.inMilliseconds;
+          // Save every ~5 seconds to avoid spamming SharedPreferences
+          if (posMs > 0 && (posMs - state.savedPositionMs).abs() > 5000) {
+            state = state.copyWith(savedPositionMs: posMs);
+          }
+        });
+        
+        ref.onDispose(() => sub.cancel());
+      }
+    });
+
+    return initialState;
+  }
+
+  @override
+  set state(PlaybackState value) {
+    final previous = super.state;
+    super.state = value;
+    if (previous != value) {
+      _scheduleSave();
+    }
+  }
+
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(seconds: 2), () {
+      try {
+        final prefs = ref.read(sharedPreferencesProvider);
+        prefs.setString(_cacheKey, jsonEncode(state.toMap()));
+      } catch (e) {
+        debugPrint('ZMR [CACHE]: Failed to save state: $e');
+      }
+    });
+  }
+
+  Future<void> _restorePlayerSilently(PlaybackState savedState) async {
+    final song = savedState.currentSong;
+    if (song == null) return;
+    
+    try {
+      final handler = zmrAudioHandlerInstance as ZmrAudioHandler;
+      // Immediately populate metadata for mini player to show something
+      handler.updateMetadata(
+        MediaItem(
+          id: song.id,
+          album: song.artist,
+          title: song.title,
+          artist: song.artist,
+          artUri: Uri.parse(song.thumbnailUrl),
+        ),
+      );
+      
+      final player = ref.read(musicPlayerProvider);
+      if (player != null) {
+        await player.setLoopMode(savedState.isRepeatOne ? LoopMode.one : (savedState.isRepeat ? LoopMode.all : LoopMode.off));
+        
+        // Fetch the fresh stream URL in the background to be ready when user hits play
+        final ytService = ref.read(youtubeServiceProvider);
+        try {
+          final playUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 15));
+          if (playUrl.isNotEmpty) {
+            await player.setAudioSource(
+              AudioSource.uri(
+                Uri.parse(playUrl),
+                tag: MediaItem(
+                  id: song.id,
+                  album: song.artist,
+                  title: song.title,
+                  artist: song.artist,
+                  artUri: Uri.parse(song.thumbnailUrl),
+                ),
+              ),
+              preload: true,
+            );
+            
+            // Seek to the saved position!
+            if (savedState.savedPositionMs > 0) {
+              await player.seek(Duration(milliseconds: savedState.savedPositionMs));
+            }
+          }
+        } catch (e) {
+          debugPrint('ZMR [CACHE]: Failed to pre-fetch stream URL for restored song: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('ZMR [CACHE]: Restore failed: $e');
+    }
   }
 
   List<int> _generateSmartShuffle(List<Song> currentQueue, int startIndex) {
@@ -587,7 +724,7 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       handler.broadcastLoading();
 
       // 4. Fetch URL with timeout/retry logic
-      String? playUrl;
+      String playUrl = '';
       int retries = 0;
       Exception? lastError;
 
@@ -595,7 +732,7 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         try {
           debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id} (Attempt ${retries + 1})...');
           playUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 15));
-          if (playUrl != null && playUrl.isNotEmpty) break;
+          if (playUrl.isNotEmpty) break;
         } catch (e) {
           lastError = e is Exception ? e : Exception(e.toString());
           retries++;
@@ -604,7 +741,7 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         }
       }
 
-      if (playUrl == null || playUrl.isEmpty) {
+      if (playUrl.isEmpty) {
         throw lastError ?? Exception('Failed to resolve stream URL for ${song.id}');
       }
       
@@ -999,18 +1136,3 @@ final lyricsProvider = FutureProvider.family<LyricsData?, String>((ref, songId) 
   final ytService = ref.read(youtubeServiceProvider);
   return await ytService.fetchLyrics(songId);
 });
-
-Duration? _parseDuration(String durationStr) {
-  try {
-    final parts = durationStr.split(':');
-    if (parts.length == 2) {
-      return Duration(minutes: int.parse(parts[0]), seconds: int.parse(parts[1]));
-    } else if (parts.length == 3) {
-      return Duration(hours: int.parse(parts[0]), minutes: int.parse(parts[1]), seconds: int.parse(parts[2]));
-    }
-    return Duration(seconds: int.parse(durationStr));
-  } catch (_) {
-    return null;
-  }
-}
-

@@ -1122,7 +1122,7 @@ class SleepTimerNotifier extends Notifier<Duration?> {
         timer.cancel();
         state = null;
         // Auto-pause playback when timer hits 0
-        ref.read(musicPlayerProvider)?.pause();
+        zmrAudioHandlerInstance?.pause();
       } else {
         state = state! - const Duration(seconds: 1);
       }

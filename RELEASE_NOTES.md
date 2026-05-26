@@ -1,5 +1,10 @@
 # ZMR Release Notes
 
+## Version 2.4.1
+
+### 🐛 Bug Fixes
+* **Sleep Timer:** Resolved an issue where the sleep timer would not automatically pause playback when the timer expired.
+
 ## Version 2.4
 
 ### 🚀 What's New

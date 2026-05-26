@@ -97,3 +97,4 @@ Icon?
 client_secret_*.json
 *.keystore
 *.jks
+RELEASE_NOTES.md 

@@ -98,3 +98,4 @@ client_secret_*.json
 *.keystore
 *.jks
 RELEASE_NOTES.md
+/lib/firebase_options.dart

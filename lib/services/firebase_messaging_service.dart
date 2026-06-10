@@ -34,6 +34,12 @@ class FirebaseMessagingService extends Notifier<UpdateBannerState> {
       _handleMessage(message);
     });
 
+    // Handle messages when the app is opened from the background
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint('ZMR [FCM]: Opened from background message: ${message.data}');
+      _handleMessage(message);
+    });
+
     // Handle initial message if the app was opened from a terminated state
     final initialMessage = await messaging.getInitialMessage();
     if (initialMessage != null) {

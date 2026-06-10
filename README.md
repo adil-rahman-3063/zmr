@@ -40,4 +40,14 @@ ZMR is designed with privacy in mind. Your YouTube cookies are stored **locally*
 
 ---
 
+## 💖 Support the Developer
+
+If you love ZMR and want to support its development, consider making a donation! 
+
+**UPI ID**: `adilrahman3063-1@okicici`
+
+<img src="assets/donation.png" alt="Donate QR Code" width="250"/>
+
+---
+
 Built with ❤️ by the ZMR Team.

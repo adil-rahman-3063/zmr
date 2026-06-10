@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
@@ -102,6 +105,13 @@ class ProfilePage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   _ProfileTile(
+                    icon: Iconsax.heart,
+                    title: 'Donate to Developer',
+                    subtitle: 'Support the development of ZMR',
+                    onTap: () => _showDonationBanner(context),
+                  ),
+                  const SizedBox(height: 16),
+                  _ProfileTile(
                     icon: Iconsax.mask,
                     title: 'Report Bug',
                     subtitle: 'Help us improve ZMR by reporting issues',
@@ -146,6 +156,96 @@ class ProfilePage extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDonationBanner(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final upiId = "adilrahman3063-1@okicici";
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        clipBehavior: Clip.antiAlias,
+        backgroundColor: colorScheme.surface,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 24.0, left: 16, right: 16),
+              child: Text(
+                'Scan or Screenshot to Donate',
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Image.asset(
+              'assets/donation.png',
+              fit: BoxFit.contain,
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                children: [
+                  Text(
+                    'Or copy UPI ID:',
+                    style: GoogleFonts.outfit(
+                      color: colorScheme.onSurface.withAlpha(150),
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: upiId));
+                      ZmrSnackbar.show(context, 'UPI ID copied to clipboard');
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withAlpha(50),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colorScheme.onSurface.withAlpha(20)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            upiId,
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Icon(Iconsax.copy, color: colorScheme.primary, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: colorScheme.surfaceContainerHighest.withAlpha(50),
+                      ),
+                      child: Text('Close', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

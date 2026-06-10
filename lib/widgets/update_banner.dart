@@ -17,9 +17,13 @@ class UpdateBanner extends StatelessWidget {
   });
 
   Future<void> _launchUpdateUrl() async {
-    final uri = Uri.parse(updateUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final uri = Uri.tryParse(updateUrl);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('Could not launch update URL: $e');
+      }
     }
   }
 

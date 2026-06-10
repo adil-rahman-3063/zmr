@@ -135,7 +135,7 @@ class ArtistPage extends ConsumerWidget {
                         onTap: () {
                           ref.read(playbackProvider.notifier).setQueue(details.popularSongs, initialIndex: index);
                         },
-                      ).animate().fade(delay: (index * 40).ms).slideX(begin: 0.1, end: 0);
+                      ).animate().fade(duration: 300.ms);
                     }),
                     const SizedBox(height: 32),
                   ],
@@ -157,7 +157,7 @@ class ArtistPage extends ConsumerWidget {
                                 onTap: () {
                                   ref.read(playbackProvider.notifier).setQueue(section.items, initialIndex: index);
                                 },
-                              ).animate().fade(delay: (index * 50).ms).scale(begin: const Offset(0.9, 0.9));
+                              ).animate().fade(duration: 300.ms);
                             },
                           ),
                         ),
@@ -206,7 +206,7 @@ class ArtistPage extends ConsumerWidget {
                                 onTap: () {
                                   ref.read(playbackProvider.notifier).setQueue(newReleases, initialIndex: index);
                                 },
-                              ).animate().fade(delay: (index * 50).ms).scale(begin: const Offset(0.9, 0.9));
+                              ).animate().fade(duration: 300.ms);
                             },
                           ),
                         ),

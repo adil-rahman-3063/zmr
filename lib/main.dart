@@ -19,6 +19,12 @@ import 'package:audio_session/audio_session.dart';
 import 'package:zmr/services/audio_handler.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:zmr/firebase_options.dart';
+import 'package:zmr/services/firebase_messaging_service.dart';
+import 'package:zmr/widgets/update_banner.dart';
+
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -60,6 +66,16 @@ void main() async {
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    debugPrint('ZMR [BOOT]: Firebase initialized');
+  } catch (e) {
+    debugPrint('ZMR [BOOT] CRITICAL: Firebase failed to initialize: $e');
+  }
 
   runApp(
     ProviderScope(
@@ -148,6 +164,7 @@ class _ZmrAppShell extends ConsumerWidget {
     final isFullPlayerVisible = ref.watch(isFullPlayerVisibleProvider);
     final currentSong = ref.watch(currentSongProvider);
     final shellOverride = ref.watch(shellVisibilityOverrideProvider);
+    final updateBannerState = ref.watch(firebaseMessagingProvider);
     
     final size = MediaQuery.of(context).size;
 
@@ -186,6 +203,19 @@ class _ZmrAppShell extends ConsumerWidget {
           // Navigation & Mini Player (Stacked Cards layer)
           if (isShellVisible)
             _StackedBottomShell(currentSong: currentSong),
+
+          // Update Banner
+          if (updateBannerState.show)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: isShellVisible ? 110 : 20,
+              child: UpdateBanner(
+                version: updateBannerState.version,
+                updateUrl: updateBannerState.updateUrl,
+                onDismiss: () => ref.read(firebaseMessagingProvider.notifier).dismissBanner(),
+              ),
+            ),
 
           // Full Player (Sliding layer)
           if (isShellVisible && currentSong != null)

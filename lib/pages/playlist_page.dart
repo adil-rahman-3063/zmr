@@ -480,6 +480,6 @@ class _SongListItem extends ConsumerWidget {
           ),
         ],
       ),
-    ).animate().fade(delay: (index * 50).ms, duration: 300.ms).slideX(begin: 0.1, end: 0);
+    ).animate().fade(duration: 300.ms);
   }
 }

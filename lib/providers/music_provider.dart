@@ -95,6 +95,24 @@ class SwipeHintNotifier extends Notifier<bool> {
 
 final swipeHintShownProvider = NotifierProvider<SwipeHintNotifier, bool>(SwipeHintNotifier.new);
 
+// UI Help Video: Track if UI help bottom sheet has been shown to new users
+class UIHelpNotifier extends Notifier<bool> {
+  static const _key = 'zmr_ui_help_shown';
+
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(_key) ?? false;
+  }
+
+  void markAsShown() {
+    state = true;
+    ref.read(sharedPreferencesProvider).setBool(_key, true);
+  }
+}
+
+final uiHelpShownProvider = NotifierProvider<UIHelpNotifier, bool>(UIHelpNotifier.new);
+
 // Cookie onboarding: Track if cookie dialog was shown to new users
 class CookieOnboardingNotifier extends Notifier<bool> {
   static const _key = 'zmr_cookie_onboarding_shown';

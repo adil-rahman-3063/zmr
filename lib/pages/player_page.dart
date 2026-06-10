@@ -498,6 +498,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
           }
         },
         onHorizontalDragEnd: (details) {
+          if (isLoading || _isNextLoading || _isPrevLoading) return;
           if (details.primaryVelocity! < -500) {
             // Swipe Left -> Next
             setState(() {
@@ -616,16 +617,28 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                 tag: 'albumArt_${currentSong.id}',
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(32),
-                                  child: currentSong.thumbnailUrl.startsWith('assets/')
-                                      ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
-                                      : Image.network(
-                                          currentSong.thumbnailUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                            child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      currentSong.thumbnailUrl.startsWith('assets/')
+                                          ? Image.asset(currentSong.thumbnailUrl, fit: BoxFit.cover)
+                                          : Image.network(
+                                              currentSong.thumbnailUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => Container(
+                                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
+                                              ),
+                                            ),
+                                      if (isLoading || _isNextLoading || _isPrevLoading)
+                                        Container(
+                                          color: Colors.black45,
+                                          child: Center(
+                                            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                                           ),
                                         ),
+                                    ],
+                                  ),
                                 ),
                               ),
                         ),
@@ -760,7 +773,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.previous,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        isLoading: _isPrevLoading,
+                        isLoading: _isPrevLoading || _isNextLoading,
                         onTap: () async {
                           setState(() {
                             _slideOffset = const Offset(-0.2, 0.0);
@@ -785,7 +798,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.next,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        isLoading: _isNextLoading,
+                        isLoading: _isNextLoading || _isPrevLoading,
                         onTap: () async {
                           setState(() {
                             _slideOffset = const Offset(0.2, 0.0);

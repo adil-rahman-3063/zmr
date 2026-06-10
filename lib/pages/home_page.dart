@@ -19,6 +19,7 @@ import 'package:zmr/pages/artist_page.dart';
 import 'package:zmr/widgets/add_to_playlist_sheet.dart';
 import 'package:zmr/widgets/zmr_snackbar.dart';
 import 'package:zmr/pages/yt_login_webview.dart';
+import 'package:zmr/widgets/ui_help_sheet.dart';
 import 'package:zmr/main.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -172,6 +173,25 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
   Widget _buildHomeContent() {
+    ref.listen(currentSongProvider, (previous, next) {
+      if (next != null && previous == null) {
+        final uiHelpShown = ref.read(uiHelpShownProvider);
+        if (!uiHelpShown) {
+          ref.read(uiHelpShownProvider.notifier).markAsShown();
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) => const UIHelpBottomSheet(),
+              );
+            }
+          });
+        }
+      }
+    });
+
     final playlistsAsync = ref.watch(userPlaylistsProvider);
     final homeFeedAsync = ref.watch(homeFeedProvider);
     final trendingSongsAsync = ref.watch(trendingSongsProvider);
@@ -196,6 +216,29 @@ class _HomePageState extends ConsumerState<HomePage> {
             pinned: true,
             backgroundColor: colorScheme.surface,
             surfaceTintColor: Colors.transparent,
+            actions: [
+              TextButton.icon(
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => const UIHelpBottomSheet(),
+                  );
+                },
+                icon: Icon(Iconsax.info_circle, color: colorScheme.primary, size: 20),
+                label: Text(
+                  'UI help',
+                  style: GoogleFonts.outfit(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: false,
               titlePadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -332,7 +375,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                         ),
                       ],
                     ),
-                  ).animate().fade(delay: (index * 100).ms, duration: 400.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart);
+                  ).animate().fade(duration: 300.ms);
                 },
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
@@ -489,7 +532,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       ),
                   ],
                 ),
-              ).animate().fade(delay: (index * 100).ms, duration: 400.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart);
+              ).animate().fade(duration: 300.ms);
             },
             childCount: sections.length,
           ),
@@ -1720,7 +1763,7 @@ class _ThumbnailGrid extends ConsumerWidget {
       itemCount: displaySongs.length,
       itemBuilder: (context, index) {
         final song = displaySongs[index];
-        return GestureDetector(
+          return GestureDetector(
           onTap: () => ref.read(musicNotifierProvider.notifier).play(song),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -1732,7 +1775,7 @@ class _ThumbnailGrid extends ConsumerWidget {
                 child: Icon(Iconsax.music, color: Theme.of(context).colorScheme.onSurface.withAlpha(100), size: 20),
               ),
             ),
-          ).animate().fade(delay: (index * 40).ms).scale(begin: const Offset(0.8, 0.8), curve: Curves.easeOutBack),
+          ).animate().fade(duration: 300.ms),
         );
       },
     );

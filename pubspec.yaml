@@ -65,6 +65,7 @@ dependencies:
   firebase_analytics: ^12.4.2
   firebase_messaging: ^16.3.0
   video_player: ^2.11.1
+  flutter_dotenv: ^6.0.1
 
 dev_dependencies:
   flutter_test:
@@ -96,6 +97,7 @@ flutter:
     - assets/icon.png
     - assets/help.mp4
     - assets/donation.png
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

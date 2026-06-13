@@ -34,11 +34,14 @@ A premium, high-performance YouTube Music client built with Flutter. ZMR focuses
 - **Backend Infrastructure**: Cloudflare Workers
 - **Database (Auth)**: Supabase
 
-## 🔒 Privacy & Security
-
 ZMR is designed with privacy in mind. Your YouTube cookies are stored **locally** in your device's secure cache and are never uploaded to any external database.
 
+For more information, please read our legal agreements:
+- [Privacy Policy](PRIVACY_POLICY.md)
+- [Terms of Service](TERMS_OF_SERVICE.md)
+
 ---
+
 
 ## 💖 Support the Developer
 

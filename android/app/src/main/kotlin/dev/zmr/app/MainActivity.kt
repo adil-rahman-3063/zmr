@@ -1,4 +1,4 @@
-package com.example.zmr
+package dev.zmr.app
 
 import io.flutter.embedding.android.FlutterActivity
 

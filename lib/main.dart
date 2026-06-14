@@ -48,7 +48,7 @@ void main() async {
         return ZmrAudioHandler(player);
       },
       config: AudioServiceConfig(
-        androidNotificationChannelId: 'com.example.zmr.channel.audio',
+        androidNotificationChannelId: 'dev.zmr.app.channel.audio',
         androidNotificationChannelName: 'Music Playback',
         androidNotificationIcon: 'mipmap/launcher_icon',
         androidNotificationOngoing: true,

@@ -15,11 +15,13 @@ class GlobalMiniPlayer extends ConsumerWidget {
     final isPlaying = ref.watch(isPlayingProvider).value ?? false;
     final processingState = ref.watch(playerProcessingStateProvider).value ?? ProcessingState.idle;
     final swipeHintShown = ref.watch(swipeHintShownProvider);
+    final playback = ref.watch(playbackProvider);
 
     if (currentSong == null) return const SizedBox.shrink();
 
     final isLoading = processingState == ProcessingState.buffering || 
-                      processingState == ProcessingState.loading;
+                      processingState == ProcessingState.loading ||
+                      playback.isSwitchingTrack;
 
     return Material(
       color: Colors.transparent,

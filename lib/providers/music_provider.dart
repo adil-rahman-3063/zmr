@@ -305,6 +305,7 @@ class PlaybackState {
 class PlaybackNotifier extends Notifier<PlaybackState> {
   static const _cacheKey = 'zmr_playback_state_cache';
   Timer? _saveTimer;
+  int _currentPlayId = 0;
 
   @override
   PlaybackState build() {
@@ -702,15 +703,11 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
   }
 
   Future<void> _playCurrent() async {
-    if (state.isSwitchingTrack) {
-      debugPrint('ZMR [PLAY]: Already switching track, ignoring request.');
-      return;
-    }
-
+    final playId = ++_currentPlayId;
     final song = state.currentSong;
     if (song == null) return;
     
-    debugPrint('ZMR [PLAY]: Attempting to play ${song.title}');
+    debugPrint('ZMR [PLAY]: Attempting to play ${song.title} (PlayId: $playId)');
     final player = ref.read(musicPlayerProvider);
     if (player == null) {
       debugPrint('ZMR [PLAY] ABORT: musicPlayerProvider returned null');
@@ -725,7 +722,15 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
     try {
       // 1. Prepare for transition
       await player.stop();
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled at stop step');
+        return;
+      }
       await player.seek(Duration.zero);
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled at seek step');
+        return;
+      }
 
       // 2. IMMEDIATELY update metadata for UI responsiveness
       handler.updateMetadata(
@@ -747,8 +752,12 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       Exception? lastError;
 
       while (retries < 3) {
+        if (_currentPlayId != playId) {
+          debugPrint('ZMR [PLAY]: Request $playId cancelled during fetch retry check');
+          return;
+        }
         try {
-          debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id} (Attempt ${retries + 1})...');
+          debugPrint('ZMR [PLAY]: Fetching stream URL for ${song.id} (Attempt ${retries + 1}, PlayId: $playId)...');
           playUrl = await ytService.getDirectStreamUrl(song.id).timeout(const Duration(seconds: 15));
           if (playUrl.isNotEmpty) break;
         } catch (e) {
@@ -759,6 +768,11 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         }
       }
 
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled after URL fetch');
+        return;
+      }
+
       if (playUrl.isEmpty) {
         throw lastError ?? Exception('Failed to resolve stream URL for ${song.id}');
       }
@@ -767,15 +781,35 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
 
       // 5. Configure audio session
       final session = await AudioSession.instance;
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before session configure');
+        return;
+      }
       await session.configure(const AudioSessionConfiguration.music());
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before session setActive');
+        return;
+      }
       await session.setActive(true);
 
       // 6. Set Player Options
       final settings = ref.read(settingsProvider);
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before setting volume');
+        return;
+      }
       await player.setVolume(settings.normalizeVolume ? 0.7 : 1.0);
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before setting loop mode');
+        return;
+      }
       await player.setLoopMode(state.isRepeatOne ? LoopMode.one : LoopMode.off);
 
       // 7. LOAD AND PLAY
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before setAudioSource');
+        return;
+      }
       await player.setAudioSource(
         AudioSource.uri(
           Uri.parse(playUrl),
@@ -790,6 +824,13 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         preload: true,
       );
 
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled before playback start');
+        return;
+      }
+
+      // Track is successfully loaded. Reset switching flag now.
+      state = state.copyWith(isSwitchingTrack: false, consecutiveFailures: 0);
       debugPrint('ZMR [PLAY]: Audio source set. Starting playback.');
       
       if (settings.crossfadeSeconds > 0) {
@@ -799,18 +840,32 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
         const steps = 10;
         final stepDuration = Duration(milliseconds: (settings.crossfadeSeconds * 1000 / steps).toInt());
         for (int i = 1; i <= steps; i++) {
+          if (_currentPlayId != playId) {
+            debugPrint('ZMR [PLAY]: Request $playId cancelled during crossfade step $i');
+            return;
+          }
           await Future.delayed(stepDuration);
+          if (_currentPlayId != playId) {
+            debugPrint('ZMR [PLAY]: Request $playId cancelled after crossfade step $i delay');
+            return;
+          }
           player.setVolume((targetVolume / steps) * i);
         }
       } else {
         await player.play(); 
       }
 
-      // Success! Reset failure counter
-      state = state.copyWith(isSwitchingTrack: false, consecutiveFailures: 0);
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled after play call');
+        return;
+      }
       _checkAndExtendQueue();
       
     } catch (e) {
+      if (_currentPlayId != playId) {
+        debugPrint('ZMR [PLAY]: Request $playId cancelled during exception handling');
+        return;
+      }
       debugPrint('ZMR [PLAY] CRITICAL ERROR: $e');
       
       final failures = state.consecutiveFailures + 1;
@@ -818,12 +873,11 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
 
       if (failures >= 5) {
         debugPrint('ZMR [PLAY]: Too many consecutive failures ($failures). Stopping auto-skip.');
-        // Notify user via handler or just stop
         return;
       }
 
-      // Auto-recovery: If a song fails, wait a bit and try the next one
       await Future.delayed(const Duration(seconds: 3));
+      if (_currentPlayId != playId) return;
       
       if (state.currentSong?.id == song.id && state.queue.isNotEmpty) {
         debugPrint('ZMR [PLAY]: Auto-skipping to next after error (Failures: $failures).');

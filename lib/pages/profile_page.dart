@@ -113,8 +113,8 @@ class ProfilePage extends ConsumerWidget {
                   const SizedBox(height: 16),
                   _ProfileTile(
                     icon: Iconsax.mask,
-                    title: 'Report Bug',
-                    subtitle: 'Help us improve ZMR by reporting issues',
+                    title: 'Report Bug / Request Feature',
+                    subtitle: 'Report issues or suggest new features to improve ZMR',
                     onTap: () => _showBugReportSheet(context, ref),
                   ),
                   const SizedBox(height: 16),
@@ -285,7 +285,7 @@ class ProfilePage extends ConsumerWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                'Report a Bug',
+                'Report Bug / Request Feature',
                 style: GoogleFonts.outfit(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -297,7 +297,7 @@ class ProfilePage extends ConsumerWidget {
                 style: GoogleFonts.outfit(),
                 decoration: InputDecoration(
                   labelText: 'Subject',
-                  hintText: 'What is the issue?',
+                  hintText: 'What is the issue or suggestion?',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   filled: true,
                   fillColor: colorScheme.surfaceContainerHighest.withAlpha(50),
@@ -310,8 +310,8 @@ class ProfilePage extends ConsumerWidget {
                 minLines: 3,
                 style: GoogleFonts.outfit(),
                 decoration: InputDecoration(
-                  labelText: 'Bug Details',
-                  hintText: 'Please describe the bug in detail...',
+                  labelText: 'Details',
+                  hintText: 'Please describe the bug or feature request in detail...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   filled: true,
                   fillColor: colorScheme.surfaceContainerHighest.withAlpha(50),
@@ -332,7 +332,7 @@ class ProfilePage extends ConsumerWidget {
                         ZmrSnackbar.show(context, 'Please fill all fields');
                         return;
                       }
-
+ 
                       isSubmitting.value = true;
                       try {
                         final supabase = Supabase.instance.client;
@@ -344,14 +344,14 @@ class ProfilePage extends ConsumerWidget {
                           'user_email': account?['email'],
                           'user_id': supabase.auth.currentUser?.id,
                         });
-
+ 
                         if (context.mounted) {
                           Navigator.pop(context);
-                          ZmrSnackbar.show(context, 'Bug reported successfully. Thank you!');
+                          ZmrSnackbar.show(context, 'Report submitted successfully. Thank you!');
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ZmrSnackbar.show(context, 'Failed to report bug: $e');
+                          ZmrSnackbar.show(context, 'Failed to submit report: $e');
                         }
                       } finally {
                         isSubmitting.value = false;

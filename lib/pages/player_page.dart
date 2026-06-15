@@ -29,8 +29,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   bool _showLyrics = false;
   Offset _slideOffset = const Offset(0.0, 0.1);
   final ScrollController _lyricsScrollController = ScrollController();
-  bool _isPrevLoading = false;
-  bool _isNextLoading = false;
 
   void _hideQueue() {
     setState(() {
@@ -498,7 +496,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
           }
         },
         onHorizontalDragEnd: (details) {
-          if (isLoading || _isNextLoading || _isPrevLoading) return;
+          if (isLoading || playback.isSwitchingTrack) return;
           if (details.primaryVelocity! < -500) {
             // Swipe Left -> Next
             setState(() {
@@ -630,7 +628,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                                 child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface, size: 64),
                                               ),
                                             ),
-                                      if (isLoading || _isNextLoading || _isPrevLoading)
+                                      if (isLoading || playback.isSwitchingTrack)
                                         Container(
                                           color: Colors.black45,
                                           child: Center(
@@ -773,14 +771,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.previous,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        isLoading: _isPrevLoading || _isNextLoading,
-                        onTap: () async {
+                        isLoading: false,
+                        onTap: () {
                           setState(() {
                             _slideOffset = const Offset(-0.2, 0.0);
-                            _isPrevLoading = true;
                           });
-                          await ref.read(playbackProvider.notifier).previous();
-                          if (mounted) setState(() => _isPrevLoading = false);
+                          ref.read(playbackProvider.notifier).previous();
                         },
                       ),
                       const SizedBox(width: 24),
@@ -798,14 +794,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         icon: Iconsax.next,
                         size: 28,
                         iconColor: Theme.of(context).colorScheme.onSurface,
-                        isLoading: _isNextLoading || _isPrevLoading,
-                        onTap: () async {
+                        isLoading: false,
+                        onTap: () {
                           setState(() {
                             _slideOffset = const Offset(0.2, 0.0);
-                            _isNextLoading = true;
                           });
-                          await ref.read(playbackProvider.notifier).next();
-                          if (mounted) setState(() => _isNextLoading = false);
+                          ref.read(playbackProvider.notifier).next();
                         },
                       ),
                     ],

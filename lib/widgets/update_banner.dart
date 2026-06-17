@@ -29,11 +29,15 @@ class UpdateBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: GlassmorphicContainer(
-        width: double.infinity,
-        height: 100,
+    return Dismissible(
+      key: const Key('update_banner_dismiss'),
+      direction: DismissDirection.down,
+      onDismissed: (_) => onDismiss(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: GlassmorphicContainer(
+          width: double.infinity,
+          height: 100,
         borderRadius: 24,
         blur: 20,
         alignment: Alignment.center,
@@ -120,6 +124,7 @@ class UpdateBanner extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

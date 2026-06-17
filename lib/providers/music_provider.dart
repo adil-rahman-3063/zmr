@@ -340,11 +340,11 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
       debugPrint('ZMR [CACHE]: Failed to load playback state: $e');
     }
 
-    // Listen to position stream to debounce save position
+    // Listen to position stream to debounce save position and auto-recover from stuck buffering
     Future.microtask(() {
       final player = ref.read(musicPlayerProvider);
       if (player != null) {
-        final sub = player.positionStream.listen((pos) {
+        final subPos = player.positionStream.listen((pos) {
           final posMs = pos.inMilliseconds;
           // Save every ~5 seconds to avoid spamming SharedPreferences
           if (posMs > 0 && (posMs - state.savedPositionMs).abs() > 5000) {
@@ -352,7 +352,67 @@ class PlaybackNotifier extends Notifier<PlaybackState> {
           }
         });
         
-        ref.onDispose(() => sub.cancel());
+        Timer? stuckTimer;
+        int recoveryAttempts = 0;
+
+        void checkStuckState() {
+          final isBuffering = player.processingState == ProcessingState.buffering;
+          final isPlaying = player.playing;
+
+          if (isBuffering && isPlaying) {
+            if (stuckTimer == null) {
+              debugPrint('ZMR [RECOVERY]: Player stuck in buffering. Starting periodic recovery timer.');
+              stuckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+                if (player.processingState == ProcessingState.buffering && player.playing) {
+                  recoveryAttempts++;
+                  debugPrint('ZMR [RECOVERY]: Stuck buffering detected. Attempt #$recoveryAttempts.');
+                  
+                  if (recoveryAttempts == 1) {
+                    try {
+                      debugPrint('ZMR [RECOVERY]: Attempting simple pause/play reset.');
+                      await player.pause();
+                      await player.play();
+                    } catch (e) {
+                      debugPrint('ZMR [RECOVERY]: Pause/play failed: $e');
+                    }
+                  } else if (recoveryAttempts >= 2) {
+                    debugPrint('ZMR [RECOVERY]: Still stuck buffering. Triggering full track reload.');
+                    timer.cancel();
+                    stuckTimer = null;
+                    recoveryAttempts = 0;
+                    
+                    try {
+                      await _playCurrent();
+                    } catch (e) {
+                      debugPrint('ZMR [RECOVERY]: Full track reload failed: $e');
+                    }
+                  }
+                } else {
+                  timer.cancel();
+                  stuckTimer = null;
+                  recoveryAttempts = 0;
+                }
+              });
+            }
+          } else {
+            if (stuckTimer != null) {
+              debugPrint('ZMR [RECOVERY]: Player active/paused. Resetting recovery timer.');
+              stuckTimer!.cancel();
+              stuckTimer = null;
+              recoveryAttempts = 0;
+            }
+          }
+        }
+
+        final subState = player.processingStateStream.listen((_) => checkStuckState());
+        final subPlaying = player.playingStream.listen((_) => checkStuckState());
+
+        ref.onDispose(() {
+          subPos.cancel();
+          subState.cancel();
+          subPlaying.cancel();
+          stuckTimer?.cancel();
+        });
       }
     });
 
